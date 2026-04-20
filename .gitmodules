@@ -1,0 +1,3 @@
+[submodule "third-party/bpmn2mcrl2"]
+	path = third-party/bpmn2mcrl2
+	url = https://github.com/SpringOxO/bpmn2mcrl2

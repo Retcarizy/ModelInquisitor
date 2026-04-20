@@ -1,0 +1,22 @@
+[project]
+name = "model-inquisitor"
+version = "0.1.0"
+description = "Claims-based BPMN to mCRL2 translation checker."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "networkx>=3.2",
+    "rich>=14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
