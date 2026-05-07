@@ -64,3 +64,62 @@ def dominators(process: ProcessModel) -> dict[str, set[str]]:
                 changed = True
     return dom
 
+
+def post_dominators(process: ProcessModel) -> dict[str, set[str]]:
+    nodes = set(process.nodes)
+    if not nodes:
+        return {}
+
+    exits = {
+        node_id for node_id in nodes
+        if not process.successors(node_id)
+    }
+    reverse_successors: dict[str, list[str]] = {node_id: [] for node_id in nodes}
+    for source, target in process.graph_edges():
+        if source in nodes and target in reverse_successors:
+            reverse_successors[target].append(source)
+
+    can_reach_exit: set[str] = set()
+    queue: deque[str] = deque(exits)
+    while queue:
+        current = queue.popleft()
+        if current in can_reach_exit:
+            continue
+        can_reach_exit.add(current)
+        queue.extend(reverse_successors.get(current, ()))
+
+    post_dom: dict[str, set[str]] = {
+        node_id: (
+            {node_id}
+            if node_id in exits or node_id not in can_reach_exit
+            else set(can_reach_exit)
+        )
+        for node_id in nodes
+    }
+
+    changed = True
+    while changed:
+        changed = False
+        for node_id in sorted(can_reach_exit - exits):
+            successors = [
+                successor for successor in process.successors(node_id)
+                if successor in can_reach_exit
+            ]
+            if successors:
+                successor_post_doms = [
+                    post_dom[successor]
+                    for successor in successors
+                    if successor in post_dom
+                ]
+                new_post_dom = (
+                    set.intersection(*successor_post_doms)
+                    if successor_post_doms
+                    else set()
+                )
+            else:
+                new_post_dom = set()
+            new_post_dom.add(node_id)
+            if new_post_dom != post_dom[node_id]:
+                post_dom[node_id] = new_post_dom
+                changed = True
+    return post_dom

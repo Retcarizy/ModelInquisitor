@@ -8,7 +8,9 @@ from typing import Any
 class ClaimKind(str, Enum):
     DEADLOCK_FREEDOM = "deadlock_freedom"
     CAUSALITY = "causality"
+    MESSAGE_SYNCHRONIZATION = "message_synchronization"
     MUTEX = "mutex"
+    NECESSARY_RESPONSE = "necessary_response"
 
 
 @dataclass(frozen=True)

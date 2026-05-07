@@ -13,8 +13,12 @@ class MCFGenerator:
             return self._deadlock_formula(claim, model)
         if claim.kind == ClaimKind.CAUSALITY:
             return self._causality_formula(claim, model)
+        if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
+            return self._message_synchronization_formula(claim, model)
         if claim.kind == ClaimKind.MUTEX:
             return self._mutex_formula(claim, model)
+        if claim.kind == ClaimKind.NECESSARY_RESPONSE:
+            return self._necessary_response_formula(claim, model)
         raise ValueError(f"unsupported claim kind: {claim.kind}")
 
     def _deadlock_formula(self, claim: Claim, model: BPMNModel) -> str:
@@ -43,6 +47,17 @@ class MCFGenerator:
             f"[(!({self._action_formula(source)}))* . ({self._action_formula(target)})]false"
         )
 
+    def _message_synchronization_formula(self, claim: Claim, model: BPMNModel) -> str:
+        message_flow = self._message_flow_for_claim(claim, model)
+        if not message_flow:
+            return "% Message synchronization claim has no matching message flow.\nfalse"
+        _, _, communicated = self.strategy.message_actions(message_flow)
+        return (
+            f"% {claim.description}\n"
+            f"% The BPMN message exchange should be represented by its semantic communication action.\n"
+            f"<true* . ({self._action_formula(communicated)})>true"
+        )
+
     def _mutex_formula(self, claim: Claim, model: BPMNModel) -> str:
         if len(claim.branch_node_ids) != 2:
             return "% Mutex claim requires exactly two branch nodes.\nfalse"
@@ -55,6 +70,33 @@ class MCFGenerator:
             f"[true* . ({self._action_formula(left)}) . true* . ({self._action_formula(right)})]false &&\n"
             f"[true* . ({self._action_formula(right)}) . true* . ({self._action_formula(left)})]false"
         )
+
+    def _necessary_response_formula(self, claim: Claim, model: BPMNModel) -> str:
+        source = self._single_action(model, claim.source_node_id)
+        target = self._single_action(model, claim.target_node_id)
+        if not source or not target:
+            return "% Necessary response claim has unresolved actions.\nfalse"
+        target_formula = self._action_formula(target)
+        return (
+            f"% {claim.description}\n"
+            f"% Once the source occurs, translator-internal steps may delay the response,\n"
+            f"% but every reachable pre-response state must keep the target reachable.\n"
+            f"[true* . ({self._action_formula(source)})]\n"
+            f"nu X. (<true* . ({target_formula})>true && [!({target_formula})]X)"
+        )
+
+    def _message_flow_for_claim(self, claim: Claim, model: BPMNModel):
+        message_flow_id = claim.metadata.get("message_flow_id") or claim.node_id
+        for message_flow in model.message_flows:
+            if message_flow.id == message_flow_id:
+                return message_flow
+        for message_flow in model.message_flows:
+            if (
+                message_flow.source_ref == claim.source_node_id
+                and message_flow.target_ref == claim.target_node_id
+            ):
+                return message_flow
+        return None
 
     def _single_action(self, model: BPMNModel, node_id: str | None) -> str | None:
         if not node_id:
