@@ -1,30 +1,10 @@
 # 下一步开发建议
 
-本文档记录 ModelInquisitor 后续开发建议。第三方 BPMN 到 mCRL2 转译器应保持
-不变，后续改进应集中在独立的检查器层。
-
-## 近期优先级
-
-当前已经完成正向端到端集成测试：如果 mCRL2 工具链存在，测试会真实运行
-`VerificationRunner.verify()`；如果工具链缺失，则自动跳过。
-
-### 1. 增加负例转译样例
-
-当前测试已经包含正向端到端集成测试，可以证明正确样例能够通过真实 mCRL2
-工具链验证。下一步需要补充的是故意错误的转译样例，证明检查器能够捕获错误。
-
-可选负例：
-
-- 删除或重命名某个 Claim 会引用的 mCRL2 action；
-- 破坏某个 message communication action；
-- 删除某个 end event action；
-- 调整动作顺序，使其违反 causality Claim。
-
-测试应断言至少一个 Claim 失败，或产生明确的模型/公式错误。
-
-这一步很关键，因为转译检查器不仅要能接受正确结果，也必须能识别错误结果。
+本文档记录 ModelInquisitor 后续开发建议。第三方 BPMN 到 mCRL2 转译器应保持不变，后续改进应集中在独立的检查器层。
 
 ## 推荐新增 Claims
+
+新增 Claim 的目标不是追求 BPMN 与 mCRL2 的完整等价证明，而是从不同角度增加对转译结果的置信度。建议优先选择“容易从 BPMN 静态结构中稳定提取、且能在 mCRL2 端明确验证”的性质。
 
 ### 1. Action Preservation Claim
 
@@ -71,7 +51,28 @@
 
 这可以捕获通信规则缺失、`comm` 声明错误，或原始 send/receive 动作意外暴露等问题。
 
-### 3. Exclusive Branch Reachability Claim
+### 3. End Event Preservation Claim
+
+目标：确保 BPMN 中的每个 end event 在转译后的 mCRL2 模型中仍然可观察。
+
+当前 deadlock freedom 近似检查已经会使用 end event action，但它是按 process
+聚合的。End Event Preservation Claim 可以更细粒度地检查每个 end event 是否
+被保留：
+
+```text
+<true* . end_action>true
+```
+
+适用场景：
+
+- 一个流程包含多个 end event；
+- 不同 end event 代表不同业务结束状态；
+- 转译器可能漏掉某个结束分支。
+
+这类 Claim 与 Action Preservation Claim 有重叠，但可以单独保留，因为 end event
+对流程完整性和死锁分析都很关键。
+
+### 4. Exclusive Branch Reachability Claim
 
 当前 mutex Claim 检查的是两个排他分支不能同时发生，但它不能证明每个分支本身
 都是可达的。
@@ -87,7 +88,7 @@
 - branch reachability 检查每个分支是否被保留；
 - mutex 检查分支之间是否仍然保持互斥。
 
-### 4. Parallel Branch Preservation Claim
+### 5. Parallel Branch Preservation Claim
 
 目标：验证 parallel gateway 的各个并行分支没有在转译中丢失。
 
@@ -99,7 +100,7 @@
 
 这可以捕获并行分支生成缺失或分支连接错误。
 
-### 5. Parallel Join Synchronization Claim
+### 6. Parallel Join Synchronization Claim
 
 当前第三方命名策略已经知道 parallel gateway 的同步动作，例如：
 
@@ -115,6 +116,64 @@
 ```
 
 建议在 parallel branch preservation 稳定后，再实现这类更强的同步 Claim。
+
+### 7. Sequential Successor Claim
+
+目标：检查没有分支干扰的顺序流是否在转译后仍保持基本先后关系。
+
+对于 BPMN 中形如：
+
+```text
+A -> B
+```
+
+且 A、B 都是可观察节点，并且中间没有 exclusive/parallel gateway 干扰时，可以
+生成 Claim，要求 B 不能在 A 之前发生：
+
+```text
+[(!A)* . B]false
+```
+
+这与现有 Causality Claim 接近，但提取规则更局部、更直观，适合作为面向
+sequenceFlow 的补充检查。
+
+实现时需要避免与现有 dominator-based causality 产生大量重复 Claim。可以先只对
+直接相邻的普通任务节点启用，或在输出中合并重复性质。
+
+### 8. Boundary Event Interruption Claim
+
+目标：检查 interrupting boundary event 的转译是否保留“中断原任务后进入异常路径”
+这一核心语义。
+
+对于 `cancelActivity=true` 的 boundary event，可以考虑检查：
+
+- boundary event action 可达；
+- boundary event 发生后，原任务正常完成动作不应再发生；
+- boundary event 发生后，异常处理分支的首个可观察动作应可达。
+
+公式雏形：
+
+```text
+<true* . boundary_action>true
+[true* . boundary_action . true* . normal_completion_action]false
+<true* . boundary_action . true* . handler_action>true
+```
+
+这类 Claim 涉及事件语义和转译命名细节，建议放在基础 action/message/branch
+Claims 稳定之后再做。
+
+## Claims 实施优先级
+
+建议按以下顺序实现新增 Claims：
+
+1. Action Preservation Claim：覆盖面广，最适合作为转译完整性 smoke test。
+2. Message Synchronization Claim：当前样例已有 messageFlow，策略支持也比较充分。
+3. End Event Preservation Claim：实现简单，能增强流程结束语义检查。
+4. Exclusive Branch Reachability Claim：与现有 mutex 互补。
+5. Parallel Branch Preservation Claim：检查并行分支是否丢失。
+6. Sequential Successor Claim：作为 causality 的局部补充，但要处理重复 Claim。
+7. Parallel Join Synchronization Claim：需要更谨慎处理并行同步语义。
+8. Boundary Event Interruption Claim：语义更复杂，适合后期扩展。
 
 ## Runner 与工具链改进
 
@@ -178,9 +237,9 @@ exists oid: OrderId. action(oid)
 
 ## 建议开发顺序
 
-1. 增加一个错误 mCRL2 负例，并断言检查器能够捕获。
-2. 实现 Action Preservation Claims。
-3. 实现 Message Synchronization Claims。
+1. 实现 Action Preservation Claims。
+2. 实现 Message Synchronization Claims。
+3. 实现 End Event Preservation Claims。
 4. 实现 Exclusive Branch Reachability Claims。
 5. 清理并明确中间产物生命周期。
 6. 增加 mCRL2 action alphabet 解析。
