@@ -64,7 +64,7 @@ BPMN 解析器位于 `ModelInquisitor/parsers/bpmn.py`。
 
 Claim 提取由 `ModelInquisitor/extractors/__init__.py` 统一组织。
 
-目前已经实现三类 Claim。
+目前已经实现四类 Claim。
 
 #### 死锁自由近似检查
 
@@ -75,6 +75,31 @@ end event。
 
 需要注意的是，当前语义是有意采用的近似版本：生成的公式检查的是 end event
 可达性，而不是严格意义上的全路径死锁自由性质。
+
+#### Action Preservation 检查
+
+实现位于 `ModelInquisitor/extractors/action_preservation.py`。
+
+该提取器会为每个 BPMN 可观察节点生成一个 Claim，要求该节点在转译后的 mCRL2
+模型中仍然可以作为可达 action 被观察到。
+
+当前覆盖范围包括：
+
+- 普通任务节点；
+- send/receive/message 相关任务；
+- end event；
+- boundary event；
+- intermediate catch/throw event；
+- 带事件定义的 start event。
+
+生成的公式形如：
+
+```text
+<true*>(<exists oid: OrderId. action(oid)>true)
+```
+
+这类 Claim 主要用于检查转译完整性：如果 BPMN 中的关键业务动作在 mCRL2 中
+消失、命名错误或不可达，验证会失败。
 
 #### 因果依赖检查
 
@@ -117,6 +142,7 @@ end event。
 它会将 Claims 转换为 modal mu-calculus 公式：
 
 - 死锁自由近似：检查 end event 动作是否可达；
+- Action Preservation：检查 BPMN 可观察节点对应 action 是否可达；
 - 因果依赖：检查目标动作不能在源动作之前发生；
 - 互斥排他：检查两个分支动作的两种先后顺序都不允许出现。
 
@@ -199,12 +225,13 @@ CLI 会输出：
 观测结果：
 
 ```text
-8 个 Claims 全部通过
+16 个 Claims 全部通过
 ```
 
 通过的 Claims 包括：
 
 - 2 个死锁自由近似 Claims；
+- 8 个 Action Preservation Claims；
 - 6 个因果依赖 Claims。
 
 当前样例没有生成 mutex Claim，因为输入 BPMN 中没有符合当前提取器模式的

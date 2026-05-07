@@ -38,6 +38,11 @@ def explain_claim(claim: Claim) -> str:
             f"Process {claim.process_id} should be able to reach an end event. "
             "A false result means the translated model may contain a path that cannot terminate normally."
         )
+    if claim.kind == ClaimKind.ACTION_PRESERVATION:
+        return (
+            f"Observable BPMN node {claim.node_id} should still be visible as a reachable action "
+            "in the translated mCRL2 model."
+        )
     if claim.kind == ClaimKind.CAUSALITY:
         return (
             f"Node {claim.source_node_id} should be a necessary predecessor of {claim.target_node_id}. "
@@ -55,6 +60,8 @@ def explain_claim(claim: Claim) -> str:
 def short_claim_text(claim: Claim) -> str:
     if claim.kind == ClaimKind.DEADLOCK_FREEDOM:
         return f"{claim.process_id} reaches an end event"
+    if claim.kind == ClaimKind.ACTION_PRESERVATION:
+        return f"{claim.node_id} remains reachable"
     if claim.kind == ClaimKind.CAUSALITY:
         return f"{claim.source_node_id} before {claim.target_node_id}"
     if claim.kind == ClaimKind.MUTEX:
@@ -107,6 +114,9 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
         if kind == ClaimKind.DEADLOCK_FREEDOM:
             processes = ", ".join(result.claim.process_id or "unknown" for result in group)
             lines.append(f"[bold]Deadlock freedom[/bold]: each listed process should still be able to terminate ({processes}).")
+        elif kind == ClaimKind.ACTION_PRESERVATION:
+            nodes = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Action preservation[/bold]: each observable BPMN node should remain reachable in mCRL2 ({nodes}).")
         elif kind == ClaimKind.CAUSALITY:
             pairs = "; ".join(
                 f"{result.claim.source_node_id} -> {result.claim.target_node_id}"

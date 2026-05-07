@@ -76,11 +76,14 @@ def test_extract_claims_and_generate_mcf_formulas():
     claims = extract_claims(model)
 
     assert any(claim.kind.value == "deadlock_freedom" for claim in claims)
+    assert any(claim.kind.value == "action_preservation" for claim in claims)
     assert any(claim.kind.value == "causality" for claim in claims)
+    assert sum(claim.kind.value == "action_preservation" for claim in claims) == 8
 
     formulas = [generator.generate(claim, model) for claim in claims]
     assert any("endevent_1" in formula for formula in formulas)
     assert any("c_send_request" in formula for formula in formulas)
+    assert any("Observable node Task_FFW_Send" in formula for formula in formulas)
 
 
 def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
@@ -91,7 +94,8 @@ def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
 
     results = VerificationRunner().verify(SPEC_BPMN, SPEC_MCRL2, work_dir=tmp_path)
 
-    assert len(results) == 8
+    assert len(results) == 16
+    assert sum(result.claim.kind.value == "action_preservation" for result in results) == 8
     assert all(result.status == "passed" for result in results)
     assert all(result.truth is True for result in results)
     assert (tmp_path / "model.lps").exists()

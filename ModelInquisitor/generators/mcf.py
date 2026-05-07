@@ -11,6 +11,8 @@ class MCFGenerator:
     def generate(self, claim: Claim, model: BPMNModel) -> str:
         if claim.kind == ClaimKind.DEADLOCK_FREEDOM:
             return self._deadlock_formula(claim, model)
+        if claim.kind == ClaimKind.ACTION_PRESERVATION:
+            return self._action_preservation_formula(claim, model)
         if claim.kind == ClaimKind.CAUSALITY:
             return self._causality_formula(claim, model)
         if claim.kind == ClaimKind.MUTEX:
@@ -30,6 +32,16 @@ class MCFGenerator:
             f"% {claim.description}\n"
             f"% Reachability-style deadlock freedom approximation.\n"
             f"<true*>({action_expr})"
+        )
+
+    def _action_preservation_formula(self, claim: Claim, model: BPMNModel) -> str:
+        action = self._single_action(model, claim.node_id)
+        if not action:
+            return "% Action preservation claim has unresolved actions.\nfalse"
+        return (
+            f"% {claim.description}\n"
+            f"% The translated model should still be able to observe this BPMN action.\n"
+            f"<true*>({self._modal(action)})"
         )
 
     def _causality_formula(self, claim: Claim, model: BPMNModel) -> str:
