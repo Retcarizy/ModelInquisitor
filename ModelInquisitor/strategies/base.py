@@ -22,9 +22,13 @@ class TranslatorNamingStrategy(ABC):
 
     @abstractmethod
     def observable_actions_for_node(self, node: BPMNNode) -> tuple[str, ...]:
-        """Return actions that are visible in the translated model."""
+        """Return translated actions that represent BPMN-visible semantics."""
+
+    @abstractmethod
+    def auxiliary_actions_for_node(self, node: BPMNNode) -> tuple[str, ...]:
+        """Return translator-introduced helper actions for a BPMN node."""
 
     @abstractmethod
     def all_claim_actions(self, model: BPMNModel) -> set[str]:
-        """Return action names that generated formulas may mention."""
+        """Return semantic action names that generated formulas may mention."""
 

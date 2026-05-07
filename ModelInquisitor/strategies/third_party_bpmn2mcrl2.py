@@ -52,16 +52,16 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
         if node.type == "endEvent":
             return clean_name(node.name or "end_event")
 
+        if node.id in self.exact_msg_nodes:
+            role, msg_name = self.exact_msg_nodes[node.id]
+            return f"{role}_{msg_name}"
+
         if node.type in {"boundaryEvent", "intermediateCatchEvent", "intermediateThrowEvent"}:
             prefix = "boundary" if node.type == "boundaryEvent" else "event"
             return self._event_action(node, prefix)
 
         if node.type == "startEvent":
             return self._event_action(node, "start") if node.event_definitions else None
-
-        if node.id in self.exact_msg_nodes:
-            role, msg_name = self.exact_msg_nodes[node.id]
-            return f"{role}_{msg_name}"
 
         if node.is_task:
             return clean_name(node.name or node.id)
@@ -81,6 +81,14 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
             return (c_action,) if c_action else ()
         return (action,)
 
+    def auxiliary_actions_for_node(self, node: BPMNNode) -> tuple[str, ...]:
+        action = self.action_for_node(node)
+        if action is None:
+            return ()
+        if action.startswith(self.forbidden_allow_prefixes):
+            return (action,)
+        return ()
+
     def all_claim_actions(self, model: BPMNModel) -> set[str]:
         actions: set[str] = set()
         for process in model.processes.values():
@@ -88,8 +96,6 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
                 actions.update(self.observable_actions_for_node(node))
         for message_flow in model.message_flows:
             actions.add(self.message_actions(message_flow)[2])
-        for gateway_id in self.parallel_gateway_ids.values():
-            actions.update({f"c_start_gw_{gateway_id}", f"c_sync_join_{gateway_id}"})
         return actions
 
     def sync_actions_for_parallel_gateway(self, gateway_node_id: str, branch_count: int) -> dict[str, object]:

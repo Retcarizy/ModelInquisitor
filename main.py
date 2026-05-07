@@ -53,11 +53,29 @@ def explain_claim(claim: Claim) -> str:
             f"Node {claim.source_node_id} should be a necessary predecessor of {claim.target_node_id}. "
             "The check asks whether the target action can be observed before the source action."
         )
+    if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
+        return (
+            f"Message flow {claim.node_id} should synchronize {claim.source_node_id} "
+            f"with {claim.target_node_id}. The check uses the semantic communication "
+            "action representing the BPMN message, not translator-internal send/receive helpers."
+        )
     if claim.kind == ClaimKind.MUTEX:
         branches = ", ".join(claim.branch_node_ids)
+        if claim.metadata.get("source") == "interrupting_boundary_event":
+            return (
+                f"Interrupting boundary event {claim.node_id} should cut off the normal "
+                f"flow of {claim.metadata.get('attached_to')}. Actions {branches} should "
+                "therefore be impossible in the same execution trace."
+            )
         return (
             f"Branches {branches} under exclusive gateway {claim.node_id} should not both appear "
             "in the same execution trace."
+        )
+    if claim.kind == ClaimKind.NECESSARY_RESPONSE:
+        return (
+            f"Node {claim.target_node_id} should be a necessary future response after "
+            f"{claim.source_node_id}. The check is based on post-dominance: once the "
+            "source is observed, every pre-response state should keep the target reachable."
         )
     return claim.description or "Unnamed claim."
 
@@ -71,8 +89,12 @@ def short_claim_text(claim: Claim) -> str:
         return f"{claim.node_id} synchronizes send/receive"
     if claim.kind == ClaimKind.CAUSALITY:
         return f"{claim.source_node_id} before {claim.target_node_id}"
+    if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
+        return f"{claim.source_node_id} synchronizes with {claim.target_node_id}"
     if claim.kind == ClaimKind.MUTEX:
         return f"{' / '.join(claim.branch_node_ids)} are mutually exclusive"
+    if claim.kind == ClaimKind.NECESSARY_RESPONSE:
+        return f"{claim.source_node_id} inevitably leads to {claim.target_node_id}"
     return claim.description or claim.kind.value
 
 
@@ -133,9 +155,21 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
                 for result in group
             )
             lines.append(f"[bold]Causality[/bold]: the source action must be observed before the target action ({pairs}).")
+        elif kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
+            pairs = "; ".join(
+                f"{result.claim.source_node_id} <-> {result.claim.target_node_id}"
+                for result in group
+            )
+            lines.append(f"[bold]Message synchronization[/bold]: cross-process message sends and receives must synchronize ({pairs}).")
         elif kind == ClaimKind.MUTEX:
             gateways = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Mutex[/bold]: exclusive gateway branches must not both occur in one trace ({gateways}).")
+        elif kind == ClaimKind.NECESSARY_RESPONSE:
+            pairs = "; ".join(
+                f"{result.claim.source_node_id} => {result.claim.target_node_id}"
+                for result in group
+            )
+            lines.append(f"[bold]Necessary response[/bold]: every continuation after the source must eventually reach the response ({pairs}).")
         else:
             lines.append(f"[bold]{kind.value}[/bold]: {len(group)} claim(s).")
 
