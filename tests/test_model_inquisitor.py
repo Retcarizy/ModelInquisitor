@@ -1,8 +1,12 @@
+import shutil
 from pathlib import Path
+
+import pytest
 
 from ModelInquisitor.extractors import extract_claims
 from ModelInquisitor.generators.mcf import MCFGenerator
 from ModelInquisitor.parsers.bpmn import BPMNParser
+from ModelInquisitor.runners.verifier import VerificationRunner
 from ModelInquisitor.strategies.third_party_bpmn2mcrl2 import (
     ThirdPartyBpmn2Mcrl2Strategy,
     clean_name,
@@ -77,3 +81,17 @@ def test_extract_claims_and_generate_mcf_formulas():
     formulas = [generator.generate(claim, model) for claim in claims]
     assert any("endevent_1" in formula for formula in formulas)
     assert any("c_send_request" in formula for formula in formulas)
+
+
+def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
+    required_tools = ("mcrl22lps", "lps2pbes", "pbes2bool")
+    missing_tools = [tool for tool in required_tools if shutil.which(tool) is None]
+    if missing_tools:
+        pytest.skip(f"mCRL2 toolchain not available: {', '.join(missing_tools)}")
+
+    results = VerificationRunner().verify(SPEC_BPMN, SPEC_MCRL2, work_dir=tmp_path)
+
+    assert len(results) == 8
+    assert all(result.status == "passed" for result in results)
+    assert all(result.truth is True for result in results)
+    assert (tmp_path / "model.lps").exists()

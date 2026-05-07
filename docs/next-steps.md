@@ -5,26 +5,13 @@
 
 ## 近期优先级
 
-### 1. 增加端到端集成测试
+当前已经完成正向端到端集成测试：如果 mCRL2 工具链存在，测试会真实运行
+`VerificationRunner.verify()`；如果工具链缺失，则自动跳过。
 
-当前项目已经可以在本地运行真实 mCRL2 验证链路。下一步应将这一能力固化为
-自动化集成测试。
+### 1. 增加负例转译样例
 
-建议行为：
-
-- 检测 `mcrl22lps`、`lps2pbes`、`pbes2bool` 是否可用；
-- 如果工具缺失，则跳过该集成测试；
-- 如果工具存在，则使用 `VerificationRunner.verify()` 运行
-  `tests/input/spec.bpmn` 和 `tests/input/spec.mcrl2`；
-- 断言所有 Claims 均通过。
-
-这样可以保护 parser、strategy、generator、runner 和 CLI 的后续重构，避免引入
-回归问题。
-
-### 2. 增加负例转译样例
-
-当前测试主要证明“正确转译可以通过”。作为转译检查器，还需要证明它能够捕获
-错误转译。
+当前测试已经包含正向端到端集成测试，可以证明正确样例能够通过真实 mCRL2
+工具链验证。下一步需要补充的是故意错误的转译样例，证明检查器能够捕获错误。
 
 可选负例：
 
@@ -191,13 +178,11 @@ exists oid: OrderId. action(oid)
 
 ## 建议开发顺序
 
-1. 为当前通过的样例增加集成测试。
-2. 增加一个错误 mCRL2 负例，并断言检查器能够捕获。
-3. 实现 Action Preservation Claims。
-4. 实现 Message Synchronization Claims。
-5. 实现 Exclusive Branch Reachability Claims。
-6. 清理并明确中间产物生命周期。
-7. 增加 mCRL2 action alphabet 解析。
-8. 扩展 parallel gateway 相关 Claims。
-9. 继续扩大 BPMN 特性覆盖范围。
-
+1. 增加一个错误 mCRL2 负例，并断言检查器能够捕获。
+2. 实现 Action Preservation Claims。
+3. 实现 Message Synchronization Claims。
+4. 实现 Exclusive Branch Reachability Claims。
+5. 清理并明确中间产物生命周期。
+6. 增加 mCRL2 action alphabet 解析。
+7. 扩展 parallel gateway 相关 Claims。
+8. 继续扩大 BPMN 特性覆盖范围。

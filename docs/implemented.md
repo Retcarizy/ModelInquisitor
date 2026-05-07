@@ -179,11 +179,12 @@ CLI 会输出：
 - 第三方命名策略是否能匹配样例 mCRL2 中的 action；
 - Claim 抽取；
 - MCF 公式生成。
+- 真实 mCRL2 工具链端到端验证；如果工具链缺失，该测试会自动跳过。
 
 当前本地测试结果：
 
 ```text
-5 passed
+6 passed
 ```
 
 ## 当前端到端状态
@@ -208,4 +209,3 @@ CLI 会输出：
 
 当前样例没有生成 mutex Claim，因为输入 BPMN 中没有符合当前提取器模式的
 exclusive gateway 分支结构。
-
