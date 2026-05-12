@@ -1,6 +1,7 @@
 """Claim extractors."""
 
 from ModelInquisitor.core.models import BPMNModel, Claim
+from ModelInquisitor.extractors.action_preservation import ActionPreservationExtractor
 from ModelInquisitor.extractors.causality import CausalityExtractor
 from ModelInquisitor.extractors.deadlock import DeadlockFreedomExtractor
 from ModelInquisitor.extractors.message_synchronization import MessageSynchronizationExtractor
@@ -12,8 +13,9 @@ def extract_claims(model: BPMNModel) -> list[Claim]:
     claims: list[Claim] = []
     for extractor in (
         DeadlockFreedomExtractor(),
-        CausalityExtractor(),
+        ActionPreservationExtractor(),
         MessageSynchronizationExtractor(),
+        CausalityExtractor(),
         MutexExtractor(),
         NecessaryResponseExtractor(),
     ):
@@ -22,6 +24,7 @@ def extract_claims(model: BPMNModel) -> list[Claim]:
 
 
 __all__ = [
+    "ActionPreservationExtractor",
     "CausalityExtractor",
     "DeadlockFreedomExtractor",
     "MessageSynchronizationExtractor",
