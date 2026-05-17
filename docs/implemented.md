@@ -227,7 +227,7 @@ CLI 会输出：
 观测结果：
 
 ```text
-19 个 Claims 全部通过
+25 个 Claims 全部通过
 ```
 
 通过的 Claims 包括：
@@ -236,5 +236,6 @@ CLI 会输出：
 - 8 个 Action Preservation Claims。
 - 3 个 Message Synchronization Claims。
 - 6 个因果依赖 Claims。
+- 6 个 Necessary Response Claims。
 
 当前样例没有生成 mutex Claim，因为输入 BPMN 中没有符合当前提取器模式的 exclusive gateway 分支结构。

@@ -1,3 +1,4 @@
+from io import StringIO
 import shutil
 from pathlib import Path
 
@@ -103,6 +104,15 @@ def test_message_catch_event_prefers_communicated_message_action():
 
     assert "c_pizza(oid)" in formula
     assert "event_pizza_received" not in formula
+
+    ask_node = model.node("Task_AskPizza")
+    assert strategy.auxiliary_actions_for_node(ask_node) == ("s_1", "r_2")
+    assert strategy.observable_actions_for_node(ask_node) == ("c_1", "c_2")
+
+    pay_node = model.node("Task_PayPizza")
+    assert strategy.auxiliary_actions_for_node(pay_node) == ("s_money", "r_receipt")
+    assert strategy.observable_actions_for_node(pay_node) == ("c_money", "c_receipt")
+
     for action in strategy.all_claim_actions(model):
         assert action in mcrl2_text
 
@@ -136,9 +146,12 @@ def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
 
     results = VerificationRunner().verify(SPEC_BPMN, SPEC_MCRL2, work_dir=tmp_path)
 
-    assert len(results) == 19
+    assert len(results) == 25
+    assert sum(result.claim.kind.value == "deadlock_freedom" for result in results) == 2
     assert sum(result.claim.kind.value == "action_preservation" for result in results) == 8
     assert sum(result.claim.kind.value == "message_synchronization" for result in results) == 3
+    assert sum(result.claim.kind.value == "causality" for result in results) == 6
+    assert sum(result.claim.kind.value == "necessary_response" for result in results) == 6
     assert all(result.status == "passed" for result in results)
     assert all(result.truth is True for result in results)
     assert (tmp_path / "model.lps").exists()
@@ -161,10 +174,15 @@ def test_message_flows_extract_synchronization_claims():
         and claim.target_node_id == "ReceiveTask_3"
         for claim in claims
     )
-    formula = generator.generate(claims[0], model)
-    assert "c_send_" in formula
-    assert "s_send_" not in formula
-    assert "r_send_" not in formula
+    request_claim = next(
+        claim for claim in claims
+        if claim.source_node_id == "Task_FFW_Send"
+        and claim.target_node_id == "ReceiveTask_3"
+    )
+    formula = generator.generate(request_claim, model)
+    assert "c_send_request" in formula
+    assert "s_send_request" in formula
+    assert "r_send_request" in formula
 
 
 def test_interrupting_boundary_event_extracts_absolute_mutex():
@@ -431,6 +449,61 @@ def test_bpmn_traces_parallel_gateway():
     assert ("c_send_request", "c_send_manifest", "c_send_eir", "endevent_1") in ffw_traces
     assert ("c_send_request", "c_send_eir", "c_send_manifest", "endevent_1") in ffw_traces
     assert len(ffw_traces) == 2
+
+
+def test_bpmn_traces_event_based_gateway_loop_is_bounded():
+    model = parse_inline_bpmn(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:task id="A" name="A" />
+    <bpmn:eventBasedGateway id="WaitChoice" />
+    <bpmn:intermediateCatchEvent id="ArrivedEvent" name="Arrived">
+      <bpmn:messageEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:intermediateCatchEvent id="Timer" name="Wait">
+      <bpmn:timerEventDefinition />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:task id="Ask" name="Ask" />
+    <bpmn:endEvent id="End" name="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="A" />
+    <bpmn:sequenceFlow id="F2" sourceRef="A" targetRef="WaitChoice" />
+    <bpmn:sequenceFlow id="F3" sourceRef="WaitChoice" targetRef="ArrivedEvent" />
+    <bpmn:sequenceFlow id="F4" sourceRef="WaitChoice" targetRef="Timer" />
+    <bpmn:sequenceFlow id="F5" sourceRef="Timer" targetRef="Ask" />
+    <bpmn:sequenceFlow id="F6" sourceRef="Ask" targetRef="WaitChoice" />
+    <bpmn:sequenceFlow id="F7" sourceRef="ArrivedEvent" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""",
+    )
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    extractor = TraceExtractor(strategy, TraceConfig(max_trace_length=8))
+
+    traces = extractor.bpmn_traces_for_process(model, model.processes["P"])
+
+    assert ("a", "event_arrived", "end") in traces
+    assert ("a", "event_wait", "ask", "event_arrived", "end") in traces
+    assert all(len(trace) <= 8 for trace in traces)
+
+
+def test_bpmn_traces_pizza_looping_parallel_branch_is_bounded():
+    model = BPMNParser().parse(THIRD_PARTY_PIZZA_BPMN)
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    extractor = TraceExtractor(strategy, TraceConfig(max_trace_length=20, max_trace_count=50))
+
+    traces = extractor.bpmn_traces(model)
+
+    assert traces["Process_Customer"]
+    assert traces["Process_Vendor"]
+    assert all(
+        len(trace) <= 20
+        for process_traces in traces.values()
+        for trace in process_traces
+    )
 
 
 def test_mcrl2_traces_from_handbuilt_lts():

@@ -17,8 +17,6 @@ class MCFGenerator:
             return self._message_synchronization_formula(claim, model)
         if claim.kind == ClaimKind.CAUSALITY:
             return self._causality_formula(claim, model)
-        if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
-            return self._message_synchronization_formula(claim, model)
         if claim.kind == ClaimKind.MUTEX:
             return self._mutex_formula(claim, model)
         if claim.kind == ClaimKind.NECESSARY_RESPONSE:
@@ -51,13 +49,9 @@ class MCFGenerator:
         )
 
     def _message_synchronization_formula(self, claim: Claim, model: BPMNModel) -> str:
-        message_flow_id = claim.metadata.get("message_flow_id") or claim.node_id
-        message_flow = next(
-            (flow for flow in model.message_flows if flow.id == message_flow_id),
-            None,
-        )
-        if message_flow is None:
-            return "% Message synchronization claim has an unknown message flow.\nfalse"
+        message_flow = self._message_flow_for_claim(claim, model)
+        if not message_flow:
+            return "% Message synchronization claim has no matching message flow.\nfalse"
 
         send, receive, communicated = self.strategy.message_actions(message_flow)
         return (
@@ -77,17 +71,6 @@ class MCFGenerator:
             f"% {claim.description}\n"
             f"% Target must not occur before source.\n"
             f"[(!({self._action_formula(source)}))* . ({self._action_formula(target)})]false"
-        )
-
-    def _message_synchronization_formula(self, claim: Claim, model: BPMNModel) -> str:
-        message_flow = self._message_flow_for_claim(claim, model)
-        if not message_flow:
-            return "% Message synchronization claim has no matching message flow.\nfalse"
-        _, _, communicated = self.strategy.message_actions(message_flow)
-        return (
-            f"% {claim.description}\n"
-            f"% The BPMN message exchange should be represented by its semantic communication action.\n"
-            f"<true* . ({self._action_formula(communicated)})>true"
         )
 
     def _mutex_formula(self, claim: Claim, model: BPMNModel) -> str:

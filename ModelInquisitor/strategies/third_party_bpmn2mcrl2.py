@@ -31,7 +31,7 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
 
     def __init__(self) -> None:
         self.model: BPMNModel | None = None
-        self.exact_msg_nodes: dict[str, tuple[str, str]] = {}
+        self.exact_msg_nodes: dict[str, list[tuple[str, str]]] = {}
         self.parallel_gateway_ids: dict[str, int] = {}
 
     def prepare(self, model: BPMNModel) -> None:
@@ -40,9 +40,9 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
         for message_flow in model.message_flows:
             msg_name = clean_name(message_flow.name or "msg")
             if message_flow.source_ref in model.node_to_process:
-                self.exact_msg_nodes[message_flow.source_ref] = ("s", msg_name)
+                self.exact_msg_nodes.setdefault(message_flow.source_ref, []).append(("s", msg_name))
             if message_flow.target_ref in model.node_to_process:
-                self.exact_msg_nodes[message_flow.target_ref] = ("r", msg_name)
+                self.exact_msg_nodes.setdefault(message_flow.target_ref, []).append(("r", msg_name))
         self.parallel_gateway_ids = self._assign_parallel_gateway_ids(model)
 
     def action_for_node(self, node: BPMNNode) -> str | None:
@@ -53,7 +53,7 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
             return clean_name(node.name or "end_event")
 
         if node.id in self.exact_msg_nodes:
-            role, msg_name = self.exact_msg_nodes[node.id]
+            role, msg_name = self.exact_msg_nodes[node.id][0]
             return f"{role}_{msg_name}"
 
         if node.type in {"boundaryEvent", "intermediateCatchEvent", "intermediateThrowEvent"}:
@@ -73,15 +73,24 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
         return f"s_{msg_name}", f"r_{msg_name}", f"c_{msg_name}"
 
     def observable_actions_for_node(self, node: BPMNNode) -> tuple[str, ...]:
+        if node.id in self.exact_msg_nodes:
+            return tuple(
+                f"c_{msg_name}"
+                for _, msg_name in self.exact_msg_nodes[node.id]
+            )
         action = self.action_for_node(node)
         if action is None:
             return ()
         if action.startswith(self.forbidden_allow_prefixes):
-            c_action = self._communicated_action_for_exact_message(node.id)
-            return (c_action,) if c_action else ()
+            return self._communicated_actions_for_exact_message(node.id)
         return (action,)
 
     def auxiliary_actions_for_node(self, node: BPMNNode) -> tuple[str, ...]:
+        if node.id in self.exact_msg_nodes:
+            return tuple(
+                f"{role}_{msg_name}"
+                for role, msg_name in self.exact_msg_nodes[node.id]
+            )
         action = self.action_for_node(node)
         if action is None:
             return ()
@@ -116,11 +125,13 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
         base = clean_name(base_source)
         return base if base.startswith(prefix + "_") else f"{prefix}_{base}"
 
-    def _communicated_action_for_exact_message(self, node_id: str) -> str | None:
+    def _communicated_actions_for_exact_message(self, node_id: str) -> tuple[str, ...]:
         if node_id not in self.exact_msg_nodes:
-            return None
-        _, msg_name = self.exact_msg_nodes[node_id]
-        return f"c_{msg_name}"
+            return ()
+        return tuple(
+            f"c_{msg_name}"
+            for _, msg_name in self.exact_msg_nodes[node_id]
+        )
 
     def _assign_parallel_gateway_ids(self, model: BPMNModel) -> dict[str, int]:
         gateway_ids: dict[str, int] = {}

@@ -29,6 +29,7 @@ FLOW_NODE_TYPES = TASK_NODE_TYPES | {
     "endEvent",
     "parallelGateway",
     "exclusiveGateway",
+    "eventBasedGateway",
     "subProcess",
     "boundaryEvent",
     "intermediateCatchEvent",
@@ -143,4 +144,3 @@ class BPMNParser:
         if participant:
             return participant.process_ref
         return None
-
