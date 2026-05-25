@@ -99,6 +99,10 @@ A -> B
 
 ### 6. Boundary Event Interruption Claim
 
+状态：基础版本已实现为 `flow::boundary_event_lifecycle`，会检查 boundary event 触发后可到达处理分支，并对 interrupting boundary event 检查触发后不再进入正常后继。
+
+后续可继续增强：检查 conditional boundary event 的条件抽象是否与第三方转译器中的 lifecycle guard 一致。
+
 目标：检查 interrupting boundary event 的转译是否保留“中断原任务后进入异常路径”这一核心语义。
 
 对于 `cancelActivity=true` 的 boundary event，可以考虑检查：
@@ -131,7 +135,7 @@ A -> B
 
 ### 2. 解析 mCRL2 Action Alphabet
 
-当前检查器主要根据 BPMN 和命名策略推导 action 名称，并没有从 mCRL2 源码中确认这些 action 是否真实声明。
+当前检查器主要根据 BPMN 和命名策略推导 action 名称。现在已经有一个很窄的源码级检查用于确认虚拟 `Environment` 进程的 send/recv 方向，但尚未系统性解析整个 mCRL2 action alphabet。
 
 建议增加轻量级 mCRL2 action parser，用于提取 `act` 声明。
 
@@ -184,5 +188,5 @@ exists oid: OrderId. action(oid)
 5. 增加 mCRL2 action alphabet 解析。
 6. 实现 Parallel Join Synchronization Claims。
 7. 实现 Sequential Successor Claims。
-8. 扩展 boundary event 等复杂 BPMN 语义。
+8. 扩展 boundary event 条件 guard、non-interrupting event 和嵌套 subprocess 等复杂 BPMN 语义。
 9. 继续扩大 BPMN 特性覆盖范围。

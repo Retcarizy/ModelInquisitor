@@ -26,6 +26,9 @@ SPEC_BPMN = ROOT / "tests" / "input" / "spec.bpmn"
 SPEC_MCRL2 = ROOT / "tests" / "input" / "spec.mcrl2"
 THIRD_PARTY_FEATURE_BPMN = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample2" / "camunda" / "feature.bpmn"
 THIRD_PARTY_FEATURE_MCRL2 = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample2" / "manual-test-output" / "feature.mcrl2"
+THIRD_PARTY_ORDER_HANDLING_BPMN = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample2" / "camunda" / "order-handling.bpmn"
+THIRD_PARTY_FREIGHT_FORWARD_BPMN = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample4" / "bpmn" / "Freight-Forward.bpmn"
+THIRD_PARTY_FREIGHT_FORWARD_MCRL2 = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample4" / "mcrl2" / "freight-forward_output.mcrl2"
 THIRD_PARTY_PIZZA_BPMN = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample3" / "camunda" / "pizza-collaboration.bpmn"
 THIRD_PARTY_PIZZA_MCRL2 = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample3" / "mcrl2" / "pizza-collaboration_output.mcrl2"
 SPEC_ALLOWED_ACTIONS = (
@@ -81,6 +84,24 @@ def test_parser_keeps_collaboration_metadata():
     assert model.message_flows[0].target_process_id == "Process_SAG"
 
 
+def test_non_executable_environment_process_is_not_checked_for_deadlock():
+    model = BPMNParser().parse(THIRD_PARTY_FREIGHT_FORWARD_BPMN)
+    claims = extract_claims(model)
+
+    assert model.processes["Process_1c1qq3r"].is_executable is False
+    assert model.processes["Process_0jeubsp"].is_executable is True
+    assert not any(
+        claim.kind == ClaimKind.DEADLOCK_FREEDOM
+        and claim.process_id == "Process_1c1qq3r"
+        for claim in claims
+    )
+    assert any(
+        claim.kind == ClaimKind.DEADLOCK_FREEDOM
+        and claim.process_id == "Process_0jeubsp"
+        for claim in claims
+    )
+
+
 def test_third_party_strategy_resolves_sample_actions_in_mcrl2():
     model = BPMNParser().parse(SPEC_BPMN)
     strategy = ThirdPartyBpmn2Mcrl2Strategy()
@@ -116,6 +137,176 @@ def test_strategy_matches_third_party_feature_sample():
     ]
     for action in strategy.all_claim_actions(model):
         assert action in mcrl2_text
+
+
+def test_subprocess_internals_generate_expansion_claims():
+    model = parse_inline_bpmn(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:subProcess id="Sub">
+      <bpmn:startEvent id="SubStart" />
+      <bpmn:task id="InnerTask" name="Inner Work" />
+      <bpmn:endEvent id="SubEnd" name="Sub Done" />
+      <bpmn:sequenceFlow id="SF1" sourceRef="SubStart" targetRef="InnerTask" />
+      <bpmn:sequenceFlow id="SF2" sourceRef="InnerTask" targetRef="SubEnd" />
+    </bpmn:subProcess>
+    <bpmn:endEvent id="End" name="Done" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Sub" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Sub" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""",
+    )
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+
+    assert model.node("InnerTask").parent_subprocess_id == "Sub"
+    claim = next(
+        claim for claim in extract_claims(model)
+        if claim.kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION
+    )
+    formula = generator.generate(claim, model)
+
+    assert claim.node_id == "Sub"
+    assert set(claim.branch_node_ids) == {"InnerTask", "SubEnd"}
+    assert "inner_work(oid)" in formula
+    assert "sub_done(oid)" in formula
+
+
+def test_boundary_event_lifecycle_claims_capture_interrupting_handler_and_cutoff():
+    model = parse_inline_bpmn(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:task id="OriginalTask" name="Original" />
+    <bpmn:task id="NormalTask" name="Normal" />
+    <bpmn:boundaryEvent id="TimeoutBoundary" name="Timeout" attachedToRef="OriginalTask">
+      <bpmn:timerEventDefinition />
+    </bpmn:boundaryEvent>
+    <bpmn:task id="RecoveryTask" name="Recover" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="OriginalTask" />
+    <bpmn:sequenceFlow id="F2" sourceRef="OriginalTask" targetRef="NormalTask" />
+    <bpmn:sequenceFlow id="F3" sourceRef="NormalTask" targetRef="End" />
+    <bpmn:sequenceFlow id="F4" sourceRef="TimeoutBoundary" targetRef="RecoveryTask" />
+    <bpmn:sequenceFlow id="F5" sourceRef="RecoveryTask" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""",
+    )
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+
+    claim = next(
+        claim for claim in extract_claims(model)
+        if claim.kind == ClaimKind.BOUNDARY_EVENT_LIFECYCLE
+    )
+    formula = generator.generate(claim, model)
+
+    assert claim.node_id == "TimeoutBoundary"
+    assert claim.target_node_id == "RecoveryTask"
+    assert claim.branch_node_ids == ("NormalTask",)
+    assert "boundary_timeout(order_id(1)) . true* . recover(order_id(1))" in formula
+    assert "[true* . boundary_timeout(order_id(1)) . true* . normal(order_id(1))]false" in formula
+
+
+def test_third_party_order_handling_emits_subprocess_and_boundary_claims():
+    model = BPMNParser().parse(THIRD_PARTY_ORDER_HANDLING_BPMN)
+    claims = extract_claims(model)
+
+    subprocess_claim = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION
+    )
+    boundary_claim = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.BOUNDARY_EVENT_LIFECYCLE
+    )
+
+    assert subprocess_claim.node_id == "Task_1nbdup3"
+    assert set(subprocess_claim.branch_node_ids) == {"Task_06z99p1", "EndEvent_036eexy"}
+    assert boundary_claim.node_id == "BoundaryEvent_1y1bvad"
+    assert boundary_claim.target_node_id == "Task_1yjkccw"
+    assert boundary_claim.branch_node_ids == ("EndEvent_00asnpf",)
+    assert boundary_claim.metadata["cancel_activity"] is True
+
+
+def test_sample4_environment_message_claims_cover_rendezvous_and_direction():
+    model = BPMNParser().parse(THIRD_PARTY_FREIGHT_FORWARD_BPMN)
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+    claims = extract_claims(model)
+
+    rendezvous_claims = [
+        claim for claim in claims
+        if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY
+    ]
+    direction_claims = [
+        claim for claim in claims
+        if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION
+    ]
+
+    assert len(rendezvous_claims) == 6
+    assert len(direction_claims) == 6
+
+    owner_flow = next(claim for claim in direction_claims if claim.node_id == "Flow_0z0srfm")
+    assert owner_flow.metadata["environment_endpoint_role"] == "source"
+    assert owner_flow.metadata["environment_process_name"] == "env_send_flow_0z0srfm"
+    assert owner_flow.metadata["environment_action"] == "s_s_o_from_owner"
+
+    shipping_agent_flow = next(
+        claim for claim in direction_claims
+        if claim.node_id == "Flow_1lu0it9"
+    )
+    assert shipping_agent_flow.metadata["environment_endpoint_role"] == "target"
+    assert shipping_agent_flow.metadata["environment_process_name"] == "env_recv_flow_1lu0it9"
+    assert shipping_agent_flow.metadata["environment_action"] == "r_s_o_from_ff_to_sa"
+
+    formula = generator.generate(
+        next(claim for claim in rendezvous_claims if claim.node_id == "Flow_0z0srfm"),
+        model,
+    )
+    assert "c_s_o_from_owner" in formula
+    assert "s_s_o_from_owner" in formula
+    assert "r_s_o_from_owner" in formula
+
+
+def test_environment_endpoint_direction_static_source_check(tmp_path):
+    runner = VerificationRunner()
+    static_claim = next(
+        result for result in runner.build_formulas(THIRD_PARTY_FREIGHT_FORWARD_BPMN)
+        if (
+            result.claim.kind
+            == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION
+            and result.claim.node_id == "Flow_0z0srfm"
+        )
+    )
+
+    passed = runner._verify_static_source_claim(
+        static_claim,
+        THIRD_PARTY_FREIGHT_FORWARD_MCRL2,
+    )
+    assert passed.status == "passed"
+    assert passed.truth is True
+
+    bad_mcrl2 = tmp_path / "bad-environment-direction.mcrl2"
+    bad_mcrl2.write_text(
+        THIRD_PARTY_FREIGHT_FORWARD_MCRL2.read_text(encoding="utf-8").replace(
+            "env_send_flow_0z0srfm(oid: OrderId) = s_s_o_from_owner(oid)",
+            "env_send_flow_0z0srfm(oid: OrderId) = r_s_o_from_owner(oid)",
+        ),
+        encoding="utf-8",
+    )
+    failed = runner._verify_static_source_claim(static_claim, bad_mcrl2)
+
+    assert failed.status == "failed"
+    assert failed.truth is False
 
 
 def test_message_catch_event_prefers_communicated_message_action():

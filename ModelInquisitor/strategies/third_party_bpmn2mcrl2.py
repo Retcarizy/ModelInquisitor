@@ -166,5 +166,17 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
                     if join:
                         stack.append(join)
                     continue
+                if node and node.type == "subProcess":
+                    inner_starts = [
+                        inner.id
+                        for inner in process.nodes.values()
+                        if (
+                            inner.type == "startEvent"
+                            and inner.parent_subprocess_id == node.id
+                        )
+                    ]
+                    stack.extend(reversed(successors))
+                    stack.extend(reversed(inner_starts))
+                    continue
                 stack.extend(reversed(successors))
         return gateway_ids

@@ -27,6 +27,12 @@ class ClaimKind(str, Enum):
     COMMUNICATION_NO_POST_RESOLUTION_CHATTER = (
         "interaction::no_post_resolution_chatter"
     )
+    COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY = (
+        "interaction::environment_rendezvous_visibility"
+    )
+    COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION = (
+        "interaction::environment_endpoint_direction"
+    )
     CHOICE_EXCLUSIVE_BRANCH_MUTEX = "flow::exclusive_branch_mutex"
     CHOICE_EVENT_BASED_FIRST_WINS = "flow::event_based_first_wins"
     CHOICE_EVENT_BASED_BRANCH_REACHABILITY = (
@@ -35,6 +41,10 @@ class ClaimKind(str, Enum):
     LOOP_BOUNDED_UNFOLDING_SOUNDNESS = "soundness::bounded_unfolding_soundness"
     LOOP_ESCAPE_POSSIBILITY = "flow::escape_possibility"
     LOOP_NO_FORCED_STARVATION = "flow::no_forced_starvation"
+    SUBPROCESS_EXPANSION_PRESERVATION = (
+        "soundness::subprocess_expansion_preservation"
+    )
+    BOUNDARY_EVENT_LIFECYCLE = "flow::boundary_event_lifecycle"
 
 
 @dataclass(frozen=True)
@@ -47,6 +57,7 @@ class BPMNNode:
     attached_to: str | None = None
     cancel_activity: bool = True
     condition_texts: tuple[str, ...] = ()
+    parent_subprocess_id: str | None = None
 
     @property
     def is_task(self) -> bool:
@@ -98,6 +109,7 @@ class Participant:
 @dataclass
 class ProcessModel:
     id: str
+    is_executable: bool = True
     nodes: dict[str, BPMNNode] = field(default_factory=dict)
     sequence_flows: list[SequenceFlow] = field(default_factory=list)
     starts: list[str] = field(default_factory=list)

@@ -7,6 +7,10 @@ from ModelInquisitor.extractors.concurrency_semantics import ConcurrencySemantic
 from ModelInquisitor.extractors.deadlock import DeadlockFreedomExtractor
 from ModelInquisitor.extractors.mutex import MutexExtractor
 from ModelInquisitor.extractors.necessary_response import NecessaryResponseExtractor
+from ModelInquisitor.extractors.subprocess_boundary import (
+    BoundaryEventLifecycleExtractor,
+    SubprocessExpansionExtractor,
+)
 
 
 def extract_claims(model: BPMNModel) -> list[Claim]:
@@ -16,6 +20,8 @@ def extract_claims(model: BPMNModel) -> list[Claim]:
         ActionPreservationExtractor(),
         CausalityExtractor(),
         MutexExtractor(),
+        BoundaryEventLifecycleExtractor(),
+        SubprocessExpansionExtractor(),
         NecessaryResponseExtractor(),
         ConcurrencySemanticsExtractor(),
     ):
@@ -25,10 +31,12 @@ def extract_claims(model: BPMNModel) -> list[Claim]:
 
 __all__ = [
     "ActionPreservationExtractor",
+    "BoundaryEventLifecycleExtractor",
     "CausalityExtractor",
     "ConcurrencySemanticsExtractor",
     "DeadlockFreedomExtractor",
     "MutexExtractor",
     "NecessaryResponseExtractor",
+    "SubprocessExpansionExtractor",
     "extract_claims",
 ]
