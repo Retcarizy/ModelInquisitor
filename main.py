@@ -58,6 +58,17 @@ def explain_claim(claim: Claim) -> str:
             f"Communication {claim.node_id} should occur only after its participant-side "
             "control-flow prerequisites have been reached."
         )
+    if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY:
+        return (
+            f"Environment-backed message flow {claim.node_id} should be closed as a "
+            "synchronized communication action, without exposing raw send/receive actions."
+        )
+    if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION:
+        return (
+            f"Generated environment process {claim.metadata.get('environment_process_name')} "
+            f"should provide {claim.metadata.get('environment_action')}(oid) for "
+            f"message flow {claim.node_id}."
+        )
     if claim.kind == ClaimKind.CAUSALITY:
         return (
             f"Node {claim.source_node_id} should be a necessary predecessor of {claim.target_node_id}. "
@@ -87,6 +98,17 @@ def explain_claim(claim: Claim) -> str:
             f"{claim.source_node_id}. The check is based on post-dominance: once the "
             "source is observed, every pre-response state should keep the target reachable."
         )
+    if claim.kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION:
+        return (
+            f"Subprocess {claim.node_id} should be translated by expanding its observable "
+            "internal actions, rather than collapsing to an opaque placeholder."
+        )
+    if claim.kind == ClaimKind.BOUNDARY_EVENT_LIFECYCLE:
+        mode = "interrupting" if claim.metadata.get("cancel_activity", True) else "non-interrupting"
+        return (
+            f"Boundary event {claim.node_id} should reach handler {claim.target_node_id} "
+            f"and respect {mode} continuation semantics for {claim.metadata.get('attached_to')}."
+        )
     return claim.description or "Unnamed claim."
 
 
@@ -101,6 +123,10 @@ def short_claim_text(claim: Claim) -> str:
         return f"{claim.node_id} exposes only rendezvous communication"
     if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_CAUSALITY:
         return f"{claim.node_id} respects participant-side prerequisites"
+    if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY:
+        return f"{claim.node_id} closes through Environment"
+    if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION:
+        return f"{claim.node_id} Environment direction"
     if claim.kind == ClaimKind.CAUSALITY:
         return f"{claim.source_node_id} before {claim.target_node_id}"
     if claim.kind == ClaimKind.MUTEX:
@@ -109,6 +135,10 @@ def short_claim_text(claim: Claim) -> str:
         return f"{' / '.join(claim.branch_node_ids)} branch remains reachable"
     if claim.kind == ClaimKind.NECESSARY_RESPONSE:
         return f"{claim.source_node_id} inevitably leads to {claim.target_node_id}"
+    if claim.kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION:
+        return f"{claim.node_id} expands internal actions"
+    if claim.kind == ClaimKind.BOUNDARY_EVENT_LIFECYCLE:
+        return f"{claim.node_id} reaches {claim.target_node_id}"
     return claim.description or claim.kind.value
 
 
@@ -123,6 +153,8 @@ def status_text(result: VerificationResult) -> str:
         return "[yellow]model error[/yellow]"
     if result.status == "solver_error":
         return "[yellow]solver error[/yellow]"
+    if result.status == "source_error":
+        return "[yellow]source error[/yellow]"
     if result.status == "not_run":
         return "[yellow]not run[/yellow]"
     return f"[dim]{result.status}[/dim]"
@@ -175,6 +207,12 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
         elif kind == ClaimKind.COMMUNICATION_RENDEZVOUS_CAUSALITY:
             flows = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Rendezvous causality[/bold]: communications must wait for participant-side control-flow context ({flows}).")
+        elif kind == ClaimKind.COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY:
+            flows = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Environment rendezvous[/bold]: participant-level environment messages should close as synchronized communications ({flows}).")
+        elif kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION:
+            flows = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Environment endpoint direction[/bold]: generated env_send/env_recv processes should match BPMN message-flow direction ({flows}).")
         elif kind == ClaimKind.MUTEX:
             gateways = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Mutex[/bold]: exclusive gateway branches must not both occur in one trace ({gateways}).")
@@ -187,6 +225,12 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
                 for result in group
             )
             lines.append(f"[bold]Necessary response[/bold]: every continuation after the source must eventually reach the response ({pairs}).")
+        elif kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION:
+            subprocesses = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Subprocess expansion[/bold]: subprocess internals should remain reachable as concrete actions ({subprocesses}).")
+        elif kind == ClaimKind.BOUNDARY_EVENT_LIFECYCLE:
+            boundaries = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Boundary lifecycle[/bold]: boundary events should route to handlers and preserve cancellation semantics ({boundaries}).")
         else:
             lines.append(f"[bold]{kind.value}[/bold]: {len(group)} claim(s).")
 
@@ -239,7 +283,7 @@ def main() -> int:
     render_claim_explanations(console, results)
     render_details(console, results, args.show_formulas)
 
-    if any(result.status in {"model_error", "formula_error", "solver_error", "not_run"} for result in results):
+    if any(result.status in {"model_error", "formula_error", "solver_error", "source_error", "not_run"} for result in results):
         return 3
     return 0 if all(result.truth for result in results) else 1
 

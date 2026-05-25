@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from itertools import combinations
 
 from ModelInquisitor.core.graph import dominators, find_join
@@ -8,8 +9,16 @@ from ModelInquisitor.core.models import (
     Claim,
     ClaimKind,
     MessageFlow,
+    Participant,
     ProcessModel,
 )
+
+
+def _clean_name(name: str | None) -> str:
+    if not name:
+        return "unnamed_action"
+    cleaned = re.sub(r"[^a-zA-Z0-9]", "_", name).strip("_").lower()
+    return cleaned if cleaned else "action"
 
 
 class ConcurrencySemanticsExtractor:
@@ -340,6 +349,51 @@ class ConcurrencySemanticsExtractor:
         }
 
         for message_flow in model.message_flows:
+            environment_endpoint = self._environment_endpoint(model, message_flow)
+            if environment_endpoint:
+                endpoint_role, participant = environment_endpoint
+                metadata = {
+                    **self._message_metadata(message_flow),
+                    **self._environment_metadata(
+                        message_flow,
+                        endpoint_role,
+                        participant,
+                    ),
+                }
+                claims.append(
+                    Claim(
+                        kind=(
+                            ClaimKind
+                            .COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY
+                        ),
+                        node_id=message_flow.id,
+                        source_node_id=message_flow.source_ref,
+                        target_node_id=message_flow.target_ref,
+                        description=(
+                            f"Environment-backed message flow {message_flow.id} "
+                            "should close as synchronized communication."
+                        ),
+                        metadata=metadata,
+                    )
+                )
+                claims.append(
+                    Claim(
+                        kind=(
+                            ClaimKind
+                            .COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION
+                        ),
+                        node_id=message_flow.id,
+                        source_node_id=message_flow.source_ref,
+                        target_node_id=message_flow.target_ref,
+                        description=(
+                            f"Environment process for message flow "
+                            f"{message_flow.id} should provide the "
+                            f"{metadata['environment_action']} endpoint."
+                        ),
+                        metadata=metadata,
+                    )
+                )
+
             if (
                 message_flow.source_ref not in model.node_to_process
                 or message_flow.target_ref not in model.node_to_process
@@ -411,6 +465,62 @@ class ConcurrencySemanticsExtractor:
             "message_name": message_flow.name,
             "source_process_id": message_flow.source_process_id,
             "target_process_id": message_flow.target_process_id,
+        }
+
+    def _environment_endpoint(
+        self,
+        model: BPMNModel,
+        message_flow: MessageFlow,
+    ) -> tuple[str, Participant] | None:
+        source_participant = model.participants.get(message_flow.source_ref)
+        target_participant = model.participants.get(message_flow.target_ref)
+        if (
+            source_participant
+            and message_flow.target_ref in model.node_to_process
+            and self._is_environment_participant(model, source_participant)
+        ):
+            return "source", source_participant
+        if (
+            target_participant
+            and message_flow.source_ref in model.node_to_process
+            and self._is_environment_participant(model, target_participant)
+        ):
+            return "target", target_participant
+        return None
+
+    def _is_environment_participant(
+        self,
+        model: BPMNModel,
+        participant: Participant,
+    ) -> bool:
+        if _clean_name(participant.name) == "environment":
+            return True
+        if not participant.process_ref:
+            return False
+        process = model.processes.get(participant.process_ref)
+        if not process:
+            return False
+        return not process.is_executable or not process.nodes
+
+    def _environment_metadata(
+        self,
+        message_flow: MessageFlow,
+        endpoint_role: str,
+        participant: Participant,
+    ) -> dict[str, object]:
+        msg_name = _clean_name(message_flow.name or "msg")
+        flow_id = _clean_name(message_flow.id or msg_name)
+        is_source = endpoint_role == "source"
+        env_process_prefix = "env_send" if is_source else "env_recv"
+        env_action_prefix = "s" if is_source else "r"
+        environment_process_name = f"{env_process_prefix}_{flow_id}"
+        environment_action = f"{env_action_prefix}_{msg_name}"
+        return {
+            "environment_endpoint_role": endpoint_role,
+            "environment_participant_id": participant.id,
+            "environment_process_id": participant.process_ref,
+            "environment_process_name": environment_process_name,
+            "environment_action": environment_action,
         }
 
     def _observable_dominators(

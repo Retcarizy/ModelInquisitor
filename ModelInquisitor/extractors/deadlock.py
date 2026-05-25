@@ -7,6 +7,8 @@ class DeadlockFreedomExtractor:
     def extract(self, model: BPMNModel) -> list[Claim]:
         claims: list[Claim] = []
         for process in model.processes.values():
+            if not process.is_executable:
+                continue
             end_nodes = tuple(
                 node.id for node in process.nodes.values() if node.type == "endEvent"
             )
@@ -19,4 +21,3 @@ class DeadlockFreedomExtractor:
                 )
             )
         return claims
-

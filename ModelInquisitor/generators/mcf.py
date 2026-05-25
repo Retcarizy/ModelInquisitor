@@ -47,6 +47,10 @@ class MCFGenerator:
             return self._conversation_order_formula(claim, model)
         if claim.kind == ClaimKind.COMMUNICATION_NO_POST_RESOLUTION_CHATTER:
             return self._no_post_resolution_chatter_formula(claim, model)
+        if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_RENDEZVOUS_VISIBILITY:
+            return self._rendezvous_visibility_formula(claim, model)
+        if claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION:
+            return self._static_environment_endpoint_formula(claim)
         if claim.kind == ClaimKind.CHOICE_EXCLUSIVE_BRANCH_MUTEX:
             return self._mutex_formula(claim, model)
         if claim.kind == ClaimKind.EXCLUSIVE_BRANCH_REACHABILITY:
@@ -61,6 +65,10 @@ class MCFGenerator:
             return self._loop_escape_possibility_formula(claim, model)
         if claim.kind == ClaimKind.LOOP_NO_FORCED_STARVATION:
             return self._loop_no_forced_starvation_formula(claim, model)
+        if claim.kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION:
+            return self._subprocess_expansion_formula(claim, model)
+        if claim.kind == ClaimKind.BOUNDARY_EVENT_LIFECYCLE:
+            return self._boundary_event_lifecycle_formula(claim, model)
         raise ValueError(f"unsupported claim kind: {claim.kind}")
 
     def _deadlock_formula(self, claim: Claim, model: BPMNModel) -> str:
@@ -405,6 +413,49 @@ class MCFGenerator:
             + " &&\n".join(parts)
         )
 
+    def _subprocess_expansion_formula(self, claim: Claim, model: BPMNModel) -> str:
+        actions = self._single_actions_for_nodes(model, claim.branch_node_ids)
+        if not actions:
+            return "% Subprocess expansion claim has unresolved internal actions.\nfalse"
+        return (
+            f"% {claim.description}\n"
+            "% Subprocess internals should be present as reachable translated actions.\n"
+            + " &&\n".join(self._sequence_reachable((action,)) for action in actions)
+        )
+
+    def _boundary_event_lifecycle_formula(self, claim: Claim, model: BPMNModel) -> str:
+        boundary_actions = self._actions_for_node(model, claim.source_node_id)
+        handler_actions = self._actions_for_node(model, claim.target_node_id)
+        normal_actions = self._actions_for_nodes(model, claim.branch_node_ids)
+        if not boundary_actions or not handler_actions:
+            return "% Boundary lifecycle claim has unresolved boundary or handler actions.\nfalse"
+
+        parts: list[str] = []
+        for boundary in boundary_actions:
+            for handler in handler_actions:
+                parts.append(self._first_order_sequence_reachable((boundary, handler)))
+
+        cancel_activity = bool(claim.metadata.get("cancel_activity", True))
+        for boundary in boundary_actions:
+            for normal in normal_actions:
+                if cancel_activity:
+                    parts.append(self._forbid_first_order_action_after(boundary, normal))
+                else:
+                    parts.append(self._first_order_sequence_reachable((boundary, normal)))
+
+        return (
+            f"% {claim.description}\n"
+            "% Boundary event lifecycles should route to the handler and respect cancellation.\n"
+            + " &&\n".join(parts)
+        )
+
+    def _static_environment_endpoint_formula(self, claim: Claim) -> str:
+        return (
+            f"% {claim.description}\n"
+            "% Static check performed against the generated mCRL2 source.\n"
+            "true"
+        )
+
     def _message_flow_for_claim(self, claim: Claim, model: BPMNModel):
         message_flow_id = claim.metadata.get("message_flow_id") or claim.node_id
         for message_flow in model.message_flows:
@@ -486,6 +537,15 @@ class MCFGenerator:
         )
         return f"<true* . {pattern}>true"
 
+    def _first_order_sequence_reachable(self, actions: tuple[str, ...]) -> str:
+        if not actions:
+            return "true"
+        pattern = " . true* . ".join(
+            f"{action}(order_id(1))"
+            for action in actions
+        )
+        return f"<true* . {pattern}>true"
+
     def _any_permutation_reachable(self, actions: tuple[str, ...]) -> str:
         unique_actions = tuple(dict.fromkeys(actions))
         if len(unique_actions) <= 1:
@@ -511,6 +571,12 @@ class MCFGenerator:
             f"[(!({boundary_formula}))* . ({action_formula}) . "
             f"(!({boundary_formula}))* . ({action_formula}) . "
             f"(!({boundary_formula}))* . ({boundary_formula})]false"
+        )
+
+    def _forbid_first_order_action_after(self, first: str, later: str) -> str:
+        return (
+            f"[true* . {first}(order_id(1)) . "
+            f"true* . {later}(order_id(1))]false"
         )
 
     def _any_action_formula(self, actions: tuple[str, ...]) -> str:

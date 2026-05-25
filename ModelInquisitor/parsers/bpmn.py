@@ -94,16 +94,28 @@ class BPMNParser:
 
     def _parse_process(self, process_elem: ET.Element) -> ProcessModel:
         process_id = process_elem.attrib.get("id", "Process")
-        process = ProcessModel(id=process_id)
+        process = ProcessModel(
+            id=process_id,
+            is_executable=process_elem.attrib.get("isExecutable", "true") != "false",
+        )
+        self._parse_scope(process_elem, process, parent_subprocess_id=None)
+        return process
 
-        for elem in list(process_elem):
+    def _parse_scope(
+        self,
+        scope_elem: ET.Element,
+        process: ProcessModel,
+        *,
+        parent_subprocess_id: str | None,
+    ) -> None:
+        for elem in list(scope_elem):
             tag = local_name(elem)
             if tag in FLOW_NODE_TYPES and "id" in elem.attrib:
                 node = BPMNNode(
                     id=elem.attrib["id"],
                     name=elem.attrib.get("name", elem.attrib["id"]),
                     type=tag,
-                    process_id=process_id,
+                    process_id=process.id,
                     event_definitions=tuple(
                         local_name(child)
                         for child in list(elem)
@@ -116,10 +128,17 @@ class BPMNParser:
                         for condition in elem.findall(".//bpmn:condition", NS)
                         if (condition.text or "").strip()
                     ),
+                    parent_subprocess_id=parent_subprocess_id,
                 )
                 process.nodes[node.id] = node
-                if tag == "startEvent":
+                if tag == "startEvent" and parent_subprocess_id is None:
                     process.starts.append(node.id)
+                if tag == "subProcess":
+                    self._parse_scope(
+                        elem,
+                        process,
+                        parent_subprocess_id=node.id,
+                    )
 
             elif tag == "sequenceFlow":
                 source = elem.attrib.get("sourceRef")
@@ -131,11 +150,9 @@ class BPMNParser:
                             source_ref=source,
                             target_ref=target,
                             name=elem.attrib.get("name", ""),
-                            process_id=process_id,
+                            process_id=process.id,
                         )
                     )
-
-        return process
 
     def _resolve_process_ref(self, model: BPMNModel, ref: str) -> str | None:
         if ref in model.node_to_process:

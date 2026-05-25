@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from ModelInquisitor.core.models import Claim
+from ModelInquisitor.core.models import Claim, ClaimKind
 from ModelInquisitor.extractors import extract_claims
 from ModelInquisitor.generators.mcf import MCFGenerator
 from ModelInquisitor.parsers.bpmn import BPMNParser
@@ -54,12 +54,14 @@ class VerificationRunner:
         results = self.build_formulas(bpmn_path)
         if not self._has_mcrl2_toolchain():
             return [
-                VerificationResult(
-                    claim=result.claim,
-                    formula=result.formula,
-                    status="not_run",
-                    output="mCRL2 command-line tools were not found on PATH.",
-                )
+                self._verify_static_source_claim(result, Path(mcrl2_path))
+                if self._is_static_source_claim(result.claim)
+                else VerificationResult(
+                        claim=result.claim,
+                        formula=result.formula,
+                        status="not_run",
+                        output="mCRL2 command-line tools were not found on PATH.",
+                    )
                 for result in results
             ]
 
@@ -87,19 +89,25 @@ class VerificationRunner:
         if model_proc.returncode != 0:
             output = self._proc_output(model_proc)
             return [
-                VerificationResult(
-                    claim=result.claim,
-                    formula=result.formula,
-                    status="model_error",
-                    truth=None,
-                    output=output,
-                    command=model_cmd,
-                )
+                self._verify_static_source_claim(result, mcrl2_path)
+                if self._is_static_source_claim(result.claim)
+                else VerificationResult(
+                        claim=result.claim,
+                        formula=result.formula,
+                        status="model_error",
+                        truth=None,
+                        output=output,
+                        command=model_cmd,
+                    )
                 for result in formula_results
             ]
 
         verified: list[VerificationResult] = []
         for index, result in enumerate(formula_results, 1):
+            if self._is_static_source_claim(result.claim):
+                verified.append(self._verify_static_source_claim(result, mcrl2_path))
+                continue
+
             stem = f"claim_{index:03d}_{self._artifact_safe_claim_kind(result.claim.kind.value)}"
             mcf_path = artifact_dir / f"{stem}.mcf"
             pbes_path = artifact_dir / f"{stem}.pbes"
@@ -169,6 +177,62 @@ class VerificationRunner:
             if value == "false":
                 return False
         return False
+
+    def _is_static_source_claim(self, claim: Claim) -> bool:
+        return claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION
+
+    def _verify_static_source_claim(
+        self,
+        result: VerificationResult,
+        mcrl2_path: Path,
+    ) -> VerificationResult:
+        if result.claim.kind == ClaimKind.COMMUNICATION_ENVIRONMENT_ENDPOINT_DIRECTION:
+            return self._verify_environment_endpoint_direction(result, mcrl2_path)
+        return result
+
+    def _verify_environment_endpoint_direction(
+        self,
+        result: VerificationResult,
+        mcrl2_path: Path,
+    ) -> VerificationResult:
+        try:
+            mcrl2_text = mcrl2_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return VerificationResult(
+                claim=result.claim,
+                formula=result.formula,
+                status="source_error",
+                truth=None,
+                output=str(exc),
+            )
+
+        proc_name = str(result.claim.metadata.get("environment_process_name", ""))
+        action = str(result.claim.metadata.get("environment_action", ""))
+        if not proc_name or not action:
+            return VerificationResult(
+                claim=result.claim,
+                formula=result.formula,
+                status="source_error",
+                truth=None,
+                output="Environment endpoint claim is missing expected source metadata.",
+            )
+
+        pattern = (
+            rf"\b{re.escape(proc_name)}\s*\([^)]*\)\s*=\s*"
+            rf"{re.escape(action)}\s*\(\s*oid\s*\)\s*\.\s*delta\s*;"
+        )
+        matched = re.search(pattern, mcrl2_text) is not None
+        if matched:
+            output = f"Found expected environment endpoint: {proc_name} -> {action}(oid)."
+        else:
+            output = f"Expected environment endpoint not found: {proc_name} -> {action}(oid)."
+        return VerificationResult(
+            claim=result.claim,
+            formula=result.formula,
+            status="passed" if matched else "failed",
+            truth=matched,
+            output=output,
+        )
 
     def _artifact_safe_claim_kind(self, value: str) -> str:
         return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "claim"
