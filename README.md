@@ -20,8 +20,8 @@ ModelInquisitor/
 
 All claim kinds use `prefix::claim_name`, with prefixes limited to `soundness`, `flow`, `concurrency`, and `interaction`.
 
-- **Soundness claims**: `soundness::deadlock_freedom`, `soundness::action_preservation`, and `soundness::bounded_unfolding_soundness` check termination reachability, observable action preservation, and bounded loop unfolding.
-- **Flow claims**: `flow::causality`, `flow::mutex`, `flow::necessary_response`, `flow::exclusive_branch_mutex`, `flow::event_based_first_wins`, `flow::event_based_branch_reachability`, `flow::escape_possibility`, and `flow::no_forced_starvation` check control-flow ordering, exclusivity, reachability, response, and loop escape properties.
+- **Soundness claims**: `soundness::deadlock_freedom`, `soundness::action_preservation`, `soundness::end_event_preservation`, and `soundness::bounded_unfolding_soundness` check termination reachability, observable action preservation, per-end-event preservation, and bounded loop unfolding.
+- **Flow claims**: `flow::causality`, `flow::mutex`, `flow::necessary_response`, `flow::exclusive_branch_reachability`, `flow::exclusive_branch_mutex`, `flow::event_based_first_wins`, `flow::event_based_branch_reachability`, `flow::escape_possibility`, and `flow::no_forced_starvation` check control-flow ordering, exclusivity, reachability, response, and loop escape properties.
 - **Concurrency claims**: `concurrency::no_artificial_ordering`, `concurrency::branch_order_preservation`, `concurrency::branch_co_occurrence`, `concurrency::no_early_join`, `concurrency::join_reachable_after_all_branches`, and `concurrency::exactly_once_branch_completion_before_join` check parallel interleavings and join behavior.
 - **Interaction claims**: `interaction::rendezvous_visibility`, `interaction::rendezvous_causality`, `interaction::conversation_order_preservation`, and `interaction::no_post_resolution_chatter` check message-flow synchronization, participant-side causality, conversation order, and post-resolution chatter.
 

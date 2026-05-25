@@ -43,6 +43,11 @@ def explain_claim(claim: Claim) -> str:
             f"Observable BPMN node {claim.node_id} should still be visible as a reachable action "
             "in the translated mCRL2 model."
         )
+    if claim.kind == ClaimKind.END_EVENT_PRESERVATION:
+        return (
+            f"End event {claim.node_id} should still be visible as a reachable termination "
+            "action in the translated mCRL2 model."
+        )
     if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY:
         return (
             f"Message flow {claim.node_id} should be visible only as a communicated action. "
@@ -81,6 +86,12 @@ def explain_claim(claim: Claim) -> str:
             f"Branches {branches} under exclusive gateway {claim.node_id} should not both appear "
             "in the same execution trace."
         )
+    if claim.kind == ClaimKind.EXCLUSIVE_BRANCH_REACHABILITY:
+        branches = ", ".join(claim.branch_node_ids)
+        return (
+            f"Exclusive gateway {claim.node_id} should keep each selectable branch reachable "
+            f"({branches})."
+        )
     if claim.kind == ClaimKind.NECESSARY_RESPONSE:
         return (
             f"Node {claim.target_node_id} should be a necessary future response after "
@@ -106,6 +117,8 @@ def short_claim_text(claim: Claim) -> str:
         return f"{claim.process_id} reaches an end event"
     if claim.kind == ClaimKind.ACTION_PRESERVATION:
         return f"{claim.node_id} remains reachable"
+    if claim.kind == ClaimKind.END_EVENT_PRESERVATION:
+        return f"{claim.node_id} end event remains reachable"
     if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY:
         return f"{claim.node_id} exposes only rendezvous communication"
     if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_CAUSALITY:
@@ -118,6 +131,8 @@ def short_claim_text(claim: Claim) -> str:
         return f"{claim.source_node_id} before {claim.target_node_id}"
     if claim.kind == ClaimKind.MUTEX:
         return f"{' / '.join(claim.branch_node_ids)} are mutually exclusive"
+    if claim.kind == ClaimKind.EXCLUSIVE_BRANCH_REACHABILITY:
+        return f"{' / '.join(claim.branch_node_ids)} branch remains reachable"
     if claim.kind == ClaimKind.NECESSARY_RESPONSE:
         return f"{claim.source_node_id} inevitably leads to {claim.target_node_id}"
     if claim.kind == ClaimKind.SUBPROCESS_EXPANSION_PRESERVATION:
@@ -177,6 +192,9 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
         elif kind == ClaimKind.ACTION_PRESERVATION:
             nodes = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Action preservation[/bold]: each observable BPMN node should remain reachable in mCRL2 ({nodes}).")
+        elif kind == ClaimKind.END_EVENT_PRESERVATION:
+            nodes = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]End event preservation[/bold]: each BPMN end event should remain reachable as its own termination action ({nodes}).")
         elif kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY:
             flows = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Rendezvous visibility[/bold]: each BPMN message flow should appear only as synchronized communication, without raw send/receive exposure ({flows}).")
@@ -198,6 +216,9 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
         elif kind == ClaimKind.MUTEX:
             gateways = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Mutex[/bold]: exclusive gateway branches must not both occur in one trace ({gateways}).")
+        elif kind == ClaimKind.EXCLUSIVE_BRANCH_REACHABILITY:
+            gateways = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Exclusive branch reachability[/bold]: every selectable exclusive branch should remain reachable ({gateways}).")
         elif kind == ClaimKind.NECESSARY_RESPONSE:
             pairs = "; ".join(
                 f"{result.claim.source_node_id} => {result.claim.target_node_id}"
