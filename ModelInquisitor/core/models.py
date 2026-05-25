@@ -8,9 +8,11 @@ from typing import Any
 class ClaimKind(str, Enum):
     DEADLOCK_FREEDOM = "soundness::deadlock_freedom"
     ACTION_PRESERVATION = "soundness::action_preservation"
+    END_EVENT_PRESERVATION = "soundness::end_event_preservation"
     CAUSALITY = "flow::causality"
     MUTEX = "flow::mutex"
     NECESSARY_RESPONSE = "flow::necessary_response"
+    EXCLUSIVE_BRANCH_REACHABILITY = "flow::exclusive_branch_reachability"
     INTERLEAVING_NO_ARTIFICIAL_ORDERING = "concurrency::no_artificial_ordering"
     INTERLEAVING_BRANCH_ORDER_PRESERVATION = "concurrency::branch_order_preservation"
     INTERLEAVING_BRANCH_CO_OCCURRENCE = "concurrency::branch_co_occurrence"

@@ -15,6 +15,8 @@ class MCFGenerator:
             return self._deadlock_formula(claim, model)
         if claim.kind == ClaimKind.ACTION_PRESERVATION:
             return self._action_preservation_formula(claim, model)
+        if claim.kind == ClaimKind.END_EVENT_PRESERVATION:
+            return self._end_event_preservation_formula(claim, model)
         if claim.kind == ClaimKind.CAUSALITY:
             return self._causality_formula(claim, model)
         if claim.kind == ClaimKind.MUTEX:
@@ -47,6 +49,8 @@ class MCFGenerator:
             return self._no_post_resolution_chatter_formula(claim, model)
         if claim.kind == ClaimKind.CHOICE_EXCLUSIVE_BRANCH_MUTEX:
             return self._mutex_formula(claim, model)
+        if claim.kind == ClaimKind.EXCLUSIVE_BRANCH_REACHABILITY:
+            return self._branch_reachability_formula(claim, model)
         if claim.kind == ClaimKind.CHOICE_EVENT_BASED_FIRST_WINS:
             return self._event_based_first_wins_formula(claim, model)
         if claim.kind == ClaimKind.CHOICE_EVENT_BASED_BRANCH_REACHABILITY:
@@ -81,6 +85,16 @@ class MCFGenerator:
         return (
             f"% {claim.description}\n"
             f"% The translated model should still be able to observe this BPMN action.\n"
+            f"<true*>({self._modal(action)})"
+        )
+
+    def _end_event_preservation_formula(self, claim: Claim, model: BPMNModel) -> str:
+        action = self._single_action(model, claim.node_id)
+        if not action:
+            return "% End event preservation claim has unresolved actions.\nfalse"
+        return (
+            f"% {claim.description}\n"
+            "% This specific BPMN end event should remain reachable in the translated model.\n"
             f"<true*>({self._modal(action)})"
         )
 

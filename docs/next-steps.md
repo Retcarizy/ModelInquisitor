@@ -15,40 +15,7 @@
 
 ## 推荐新增 Claims
 
-### 1. End Event Preservation Claim
-
-目标：确保 BPMN 中的每个 end event 在转译后的 mCRL2 模型中仍然可观察。
-
-当前 deadlock freedom 近似检查已经会使用 end event action，但它是按 process 聚合的。End Event Preservation Claim 可以更细粒度地检查每个 end event 是否被保留：
-
-```text
-<true* . end_action>true
-```
-
-适用场景：
-
-- 一个流程包含多个 end event。
-- 不同 end event 代表不同业务结束状态。
-- 转译器可能漏掉某个结束分支。
-
-这类 Claim 与已实现的 Action Preservation Claim 有重叠，但可以单独保留，因为 end event 对流程完整性和死锁分析都很关键。
-
-### 2. Exclusive Branch Reachability Claim
-
-当前 mutex Claim 检查的是两个排他分支不能同时发生，但它不能证明每个分支本身都是可达的。
-
-建议为每条 exclusive branch 的首个可观察动作增加可达性 Claim：
-
-```text
-<true* . branch_action>true
-```
-
-两类 Claim 配合后可以形成互补：
-
-- branch reachability 检查每个分支是否被保留。
-- mutex 检查分支之间是否仍然保持互斥。
-
-### 3. Parallel Branch Preservation Claim
+### 1. Parallel Branch Preservation Claim
 
 目标：验证 parallel gateway 的各个并行分支没有在转译中丢失。
 
@@ -60,7 +27,7 @@
 
 这可以捕获并行分支生成缺失或分支连接错误。
 
-### 4. Sequential Successor Claim
+### 2. Sequential Successor Claim
 
 目标：检查没有分支干扰的顺序流是否在转译后仍保持基本先后关系。
 
@@ -80,7 +47,7 @@ A -> B
 
 实现时需要避免与现有 dominator-based causality 产生大量重复 Claim。可以先只对直接相邻的普通任务节点启用，或在输出中合并重复性质。
 
-### 5. Parallel Join Synchronization Claim
+### 3. Parallel Join Synchronization Claim
 
 当前第三方命名策略已经知道 parallel gateway 的同步动作，例如：
 
@@ -97,7 +64,7 @@ A -> B
 
 建议在 Parallel Branch Preservation 稳定后，再实现这类更强的同步 Claim。
 
-### 6. Boundary Event Interruption Claim
+### 4. Boundary Event Interruption Claim
 
 目标：检查 interrupting boundary event 的转译是否保留“中断原任务后进入异常路径”这一核心语义。
 
@@ -177,12 +144,10 @@ exists oid: OrderId. action(oid)
 
 ## 建议开发顺序
 
-1. 实现 End Event Preservation Claims。
-2. 实现 Exclusive Branch Reachability Claims。
-3. 实现 Parallel Branch Preservation Claims。
-4. 清理并明确中间产物生命周期。
-5. 增加 mCRL2 action alphabet 解析。
-6. 实现 Parallel Join Synchronization Claims。
-7. 实现 Sequential Successor Claims。
-8. 扩展 boundary event 等复杂 BPMN 语义。
-9. 继续扩大 BPMN 特性覆盖范围。
+1. 实现 Parallel Branch Preservation Claims。
+2. 清理并明确中间产物生命周期。
+3. 增加 mCRL2 action alphabet 解析。
+4. 实现 Parallel Join Synchronization Claims。
+5. 实现 Sequential Successor Claims。
+6. 扩展 boundary event 等复杂 BPMN 语义。
+7. 继续扩大 BPMN 特性覆盖范围。

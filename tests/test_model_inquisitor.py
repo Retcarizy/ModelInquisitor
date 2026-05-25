@@ -162,11 +162,13 @@ def test_extract_claims_and_generate_mcf_formulas():
 
     assert any(claim.kind.value == "soundness::deadlock_freedom" for claim in claims)
     assert any(claim.kind.value == "soundness::action_preservation" for claim in claims)
+    assert any(claim.kind.value == "soundness::end_event_preservation" for claim in claims)
     assert any(claim.kind.value == "flow::causality" for claim in claims)
     assert any(claim.kind.value == "concurrency::no_artificial_ordering" for claim in claims)
     assert any(claim.kind.value == "concurrency::no_early_join" for claim in claims)
     assert any(claim.kind.value == "interaction::rendezvous_visibility" for claim in claims)
     assert sum(claim.kind.value == "soundness::action_preservation" for claim in claims) == 8
+    assert sum(claim.kind.value == "soundness::end_event_preservation" for claim in claims) == 2
     assert sum(claim.kind.value == "concurrency::no_artificial_ordering" for claim in claims) == 2
     assert sum(claim.kind.value == "concurrency::branch_co_occurrence" for claim in claims) == 2
     assert sum(claim.kind.value == "concurrency::no_early_join" for claim in claims) == 2
@@ -193,6 +195,7 @@ def test_extract_claims_and_generate_mcf_formulas():
     assert any("c_send_request" in formula for formula in formulas)
     assert any("s_send_request" in formula and "r_send_request" in formula for formula in formulas)
     assert any("Observable node Task_FFW_Send" in formula for formula in formulas)
+    assert any("specific BPMN end event" in formula for formula in formulas)
 
 
 def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
@@ -200,9 +203,10 @@ def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
 
     results = VerificationRunner().verify(SPEC_BPMN, SPEC_MCRL2, work_dir=tmp_path)
 
-    assert len(results) == 40
+    assert len(results) == 42
     assert sum(result.claim.kind.value == "soundness::deadlock_freedom" for result in results) == 2
     assert sum(result.claim.kind.value == "soundness::action_preservation" for result in results) == 8
+    assert sum(result.claim.kind.value == "soundness::end_event_preservation" for result in results) == 2
     assert sum(result.claim.kind.value == "flow::causality" for result in results) == 6
     assert sum(result.claim.kind.value == "flow::necessary_response" for result in results) == 6
     assert sum(result.claim.kind.value == "concurrency::no_artificial_ordering" for result in results) == 2
@@ -398,6 +402,39 @@ def test_exclusive_branch_mutex_namespaced_claims():
     formula = generator.generate(claims[0], model)
     assert "a(oid)" in formula
     assert "b(oid)" in formula
+
+
+def test_exclusive_branch_reachability_claims_each_branch():
+    model = parse_inline_bpmn(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Split" />
+    <bpmn:task id="A" name="A" />
+    <bpmn:task id="B" name="B" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Split" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Split" targetRef="A" />
+    <bpmn:sequenceFlow id="F3" sourceRef="Split" targetRef="B" />
+    <bpmn:sequenceFlow id="F4" sourceRef="A" targetRef="End" />
+    <bpmn:sequenceFlow id="F5" sourceRef="B" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""",
+    )
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+    claims = [
+        claim for claim in extract_claims(model)
+        if claim.kind == ClaimKind.EXCLUSIVE_BRANCH_REACHABILITY
+    ]
+
+    assert [claim.branch_node_ids for claim in claims] == [("A",), ("B",)]
+    formulas = [generator.generate(claim, model) for claim in claims]
+    assert any("<true* . (exists oid: OrderId. a(oid))>true" in formula for formula in formulas)
+    assert any("<true* . (exists oid: OrderId. b(oid))>true" in formula for formula in formulas)
 
 
 def test_event_based_loop_claims_cover_race_escape_and_chatter():
