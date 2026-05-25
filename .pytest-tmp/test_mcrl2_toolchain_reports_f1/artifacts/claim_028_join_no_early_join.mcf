@@ -1,0 +1,4 @@
+% EndEvent_1 after join ParallelGateway_2 should wait for all parallel branch completions.
+% Join continuation must not occur before every branch completion.
+[(!(exists oid: OrderId. c_send_manifest(oid)))* . (exists oid: OrderId. endevent_1(oid))]false &&
+[(!(exists oid: OrderId. c_send_eir(oid)))* . (exists oid: OrderId. endevent_1(oid))]false

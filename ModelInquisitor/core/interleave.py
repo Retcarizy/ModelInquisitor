@@ -30,9 +30,9 @@ def interleave_trace_sets(
     """Interleave two trace sets. Returns (result, truncated) where truncated is True if max_count was hit."""
     result: set[Trace] = set()
     truncated = False
-    for a in set_a:
-        for b in set_b:
-            for interleaved in interleave_sequences(a, b):
+    for a in _shortest_first(set_a):
+        for b in _shortest_first(set_b):
+            for interleaved in _shortest_first(interleave_sequences(a, b)):
                 result.add(interleaved)
                 if len(result) >= max_count:
                     truncated = True
@@ -58,3 +58,7 @@ def interleave_multi(
         if t:
             truncated = True
     return current, truncated
+
+
+def _shortest_first(traces) -> list[Trace]:
+    return sorted(traces, key=lambda trace: (len(trace), trace))

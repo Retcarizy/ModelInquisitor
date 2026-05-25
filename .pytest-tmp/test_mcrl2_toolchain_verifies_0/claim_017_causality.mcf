@@ -1,0 +1,3 @@
+% ReceiveTask_3 must occur before Task_SAG_Send1.
+% Target must not occur before source.
+[(!(exists oid: OrderId. c_send_request(oid)))* . (exists oid: OrderId. c_send_manifest(oid))]false

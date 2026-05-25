@@ -1,0 +1,3 @@
+% Observable node ReceiveTask_2 should be preserved as a reachable action.
+% The translated model should still be able to observe this BPMN action.
+<true*>(<exists oid: OrderId. c_send_eir(oid)>true)

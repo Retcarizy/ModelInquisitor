@@ -1,0 +1,4 @@
+% Parallel branches Task_SAG_Send1 and Task_SAG_Send2 under ParallelGateway_3 should be reachable in both observable orders.
+% Both observable branch orders should be reachable.
+<true* . (exists oid: OrderId. c_send_manifest(oid)) . true* . (exists oid: OrderId. c_send_eir(oid))>true &&
+<true* . (exists oid: OrderId. c_send_eir(oid)) . true* . (exists oid: OrderId. c_send_manifest(oid))>true

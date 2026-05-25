@@ -1,0 +1,4 @@
+% EndEvent_1 after join ParallelGateway_2 should be reachable once all parallel branches complete.
+% Once all branch completions have happened, the join continuation should be reachable.
+(<true* . (exists oid: OrderId. c_send_manifest(oid)) . true* . (exists oid: OrderId. c_send_eir(oid)) . true* . (exists oid: OrderId. endevent_1(oid))>true ||
+<true* . (exists oid: OrderId. c_send_eir(oid)) . true* . (exists oid: OrderId. c_send_manifest(oid)) . true* . (exists oid: OrderId. endevent_1(oid))>true)

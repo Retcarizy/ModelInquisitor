@@ -43,21 +43,20 @@ def explain_claim(claim: Claim) -> str:
             f"Observable BPMN node {claim.node_id} should still be visible as a reachable action "
             "in the translated mCRL2 model."
         )
-    if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
+    if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY:
         return (
-            f"Message flow {claim.node_id} should be synchronized as a communicated action. "
+            f"Message flow {claim.node_id} should be visible only as a communicated action. "
             "A false result means communication may be missing or raw send/receive actions may be exposed."
+        )
+    if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_CAUSALITY:
+        return (
+            f"Communication {claim.node_id} should occur only after its participant-side "
+            "control-flow prerequisites have been reached."
         )
     if claim.kind == ClaimKind.CAUSALITY:
         return (
             f"Node {claim.source_node_id} should be a necessary predecessor of {claim.target_node_id}. "
             "The check asks whether the target action can be observed before the source action."
-        )
-    if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
-        return (
-            f"Message flow {claim.node_id} should synchronize {claim.source_node_id} "
-            f"with {claim.target_node_id}. The check uses the semantic communication "
-            "action representing the BPMN message, not translator-internal send/receive helpers."
         )
     if claim.kind == ClaimKind.MUTEX:
         branches = ", ".join(claim.branch_node_ids)
@@ -85,12 +84,12 @@ def short_claim_text(claim: Claim) -> str:
         return f"{claim.process_id} reaches an end event"
     if claim.kind == ClaimKind.ACTION_PRESERVATION:
         return f"{claim.node_id} remains reachable"
-    if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
-        return f"{claim.node_id} synchronizes send/receive"
+    if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY:
+        return f"{claim.node_id} exposes only rendezvous communication"
+    if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_CAUSALITY:
+        return f"{claim.node_id} respects participant-side prerequisites"
     if claim.kind == ClaimKind.CAUSALITY:
         return f"{claim.source_node_id} before {claim.target_node_id}"
-    if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
-        return f"{claim.source_node_id} synchronizes with {claim.target_node_id}"
     if claim.kind == ClaimKind.MUTEX:
         return f"{' / '.join(claim.branch_node_ids)} are mutually exclusive"
     if claim.kind == ClaimKind.NECESSARY_RESPONSE:
@@ -146,21 +145,18 @@ def render_claim_explanations(console: Console, results: list[VerificationResult
         elif kind == ClaimKind.ACTION_PRESERVATION:
             nodes = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Action preservation[/bold]: each observable BPMN node should remain reachable in mCRL2 ({nodes}).")
-        elif kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
+        elif kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY:
             flows = ", ".join(result.claim.node_id or "unknown" for result in group)
-            lines.append(f"[bold]Message synchronization[/bold]: each BPMN message flow should appear as synchronized communication, without raw send/receive exposure ({flows}).")
+            lines.append(f"[bold]Rendezvous visibility[/bold]: each BPMN message flow should appear only as synchronized communication, without raw send/receive exposure ({flows}).")
         elif kind == ClaimKind.CAUSALITY:
             pairs = "; ".join(
                 f"{result.claim.source_node_id} -> {result.claim.target_node_id}"
                 for result in group
             )
             lines.append(f"[bold]Causality[/bold]: the source action must be observed before the target action ({pairs}).")
-        elif kind == ClaimKind.MESSAGE_SYNCHRONIZATION:
-            pairs = "; ".join(
-                f"{result.claim.source_node_id} <-> {result.claim.target_node_id}"
-                for result in group
-            )
-            lines.append(f"[bold]Message synchronization[/bold]: cross-process message sends and receives must synchronize ({pairs}).")
+        elif kind == ClaimKind.COMMUNICATION_RENDEZVOUS_CAUSALITY:
+            flows = ", ".join(result.claim.node_id or "unknown" for result in group)
+            lines.append(f"[bold]Rendezvous causality[/bold]: communications must wait for participant-side control-flow context ({flows}).")
         elif kind == ClaimKind.MUTEX:
             gateways = ", ".join(result.claim.node_id or "unknown" for result in group)
             lines.append(f"[bold]Mutex[/bold]: exclusive gateway branches must not both occur in one trace ({gateways}).")

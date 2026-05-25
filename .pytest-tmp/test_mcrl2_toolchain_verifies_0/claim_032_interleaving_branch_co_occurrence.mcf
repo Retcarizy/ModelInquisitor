@@ -1,0 +1,4 @@
+% Parallel branches under ParallelGateway_3 should co-occur in one execution trace.
+% One execution trace should contain all key parallel branch actions.
+(<true* . (exists oid: OrderId. c_send_manifest(oid)) . true* . (exists oid: OrderId. c_send_eir(oid))>true ||
+<true* . (exists oid: OrderId. c_send_eir(oid)) . true* . (exists oid: OrderId. c_send_manifest(oid))>true)

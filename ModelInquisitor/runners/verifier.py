@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -99,7 +100,7 @@ class VerificationRunner:
 
         verified: list[VerificationResult] = []
         for index, result in enumerate(formula_results, 1):
-            stem = f"claim_{index:03d}_{result.claim.kind.value}"
+            stem = f"claim_{index:03d}_{self._artifact_safe_claim_kind(result.claim.kind.value)}"
             mcf_path = artifact_dir / f"{stem}.mcf"
             pbes_path = artifact_dir / f"{stem}.pbes"
             mcf_path.write_text(result.formula, encoding="utf-8")
@@ -168,3 +169,6 @@ class VerificationRunner:
             if value == "false":
                 return False
         return False
+
+    def _artifact_safe_claim_kind(self, value: str) -> str:
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "claim"

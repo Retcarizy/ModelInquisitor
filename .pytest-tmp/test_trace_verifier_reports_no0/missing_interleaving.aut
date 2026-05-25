@@ -1,0 +1,6 @@
+des (0, 5, 6)
+(0, "c_send_request", 1)
+(1, "c_send_manifest", 2)
+(2, "c_send_eir", 3)
+(3, "endevent_1", 4)
+(4, "endevent_2", 5)

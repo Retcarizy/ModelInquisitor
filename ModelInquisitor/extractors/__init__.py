@@ -3,8 +3,8 @@
 from ModelInquisitor.core.models import BPMNModel, Claim
 from ModelInquisitor.extractors.action_preservation import ActionPreservationExtractor
 from ModelInquisitor.extractors.causality import CausalityExtractor
+from ModelInquisitor.extractors.concurrency_semantics import ConcurrencySemanticsExtractor
 from ModelInquisitor.extractors.deadlock import DeadlockFreedomExtractor
-from ModelInquisitor.extractors.message_synchronization import MessageSynchronizationExtractor
 from ModelInquisitor.extractors.mutex import MutexExtractor
 from ModelInquisitor.extractors.necessary_response import NecessaryResponseExtractor
 
@@ -14,10 +14,10 @@ def extract_claims(model: BPMNModel) -> list[Claim]:
     for extractor in (
         DeadlockFreedomExtractor(),
         ActionPreservationExtractor(),
-        MessageSynchronizationExtractor(),
         CausalityExtractor(),
         MutexExtractor(),
         NecessaryResponseExtractor(),
+        ConcurrencySemanticsExtractor(),
     ):
         claims.extend(extractor.extract(model))
     return claims
@@ -26,8 +26,8 @@ def extract_claims(model: BPMNModel) -> list[Claim]:
 __all__ = [
     "ActionPreservationExtractor",
     "CausalityExtractor",
+    "ConcurrencySemanticsExtractor",
     "DeadlockFreedomExtractor",
-    "MessageSynchronizationExtractor",
     "MutexExtractor",
     "NecessaryResponseExtractor",
     "extract_claims",

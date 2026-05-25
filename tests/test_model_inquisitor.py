@@ -2,6 +2,8 @@ from io import StringIO
 import shutil
 from pathlib import Path
 
+import pytest
+
 from ModelInquisitor.core.interleave import interleave_multi, interleave_sequences, interleave_trace_sets
 from ModelInquisitor.core.lts import LTS, LTSTransition, parse_aut, strip_data_params
 from ModelInquisitor.core.models import ClaimKind
@@ -9,6 +11,9 @@ from ModelInquisitor.core.traces import TraceComparison, TraceConfig, TraceExtra
 from ModelInquisitor.extractors import extract_claims
 from ModelInquisitor.generators.mcf import MCFGenerator
 from ModelInquisitor.parsers.bpmn import BPMNParser
+from ModelInquisitor.runners import trace_verifier as trace_verifier_module
+from ModelInquisitor.runners.lts_generator import LTSGenerationResult
+from ModelInquisitor.runners.trace_verifier import TraceVerificationRunner
 from ModelInquisitor.runners.verifier import VerificationRunner
 from ModelInquisitor.strategies.third_party_bpmn2mcrl2 import (
     ThirdPartyBpmn2Mcrl2Strategy,
@@ -23,10 +28,41 @@ THIRD_PARTY_FEATURE_BPMN = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sa
 THIRD_PARTY_FEATURE_MCRL2 = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample2" / "manual-test-output" / "feature.mcrl2"
 THIRD_PARTY_PIZZA_BPMN = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample3" / "camunda" / "pizza-collaboration.bpmn"
 THIRD_PARTY_PIZZA_MCRL2 = ROOT / "third-party" / "bpmn2mcrl2" / "samples" / "sample3" / "mcrl2" / "pizza-collaboration_output.mcrl2"
+SPEC_ALLOWED_ACTIONS = (
+    "allow({c_send_eir, c_send_manifest, c_send_request, c_start_gw_1, "
+    "c_start_gw_2, c_sync_join_1, c_sync_join_2, endevent_1, endevent_2}"
+)
+MCRL2_VERIFICATION_TOOLS = ("mcrl22lps", "lps2pbes", "pbes2bool")
 
 
 def parse_inline_bpmn(xml: str):
     return BPMNParser().parse(StringIO(xml))
+
+
+def require_mcrl2_verification_toolchain():
+    missing_tools = [
+        tool for tool in MCRL2_VERIFICATION_TOOLS
+        if shutil.which(tool) is None
+    ]
+    if missing_tools:
+        pytest.skip(f"mCRL2 toolchain not available: {', '.join(missing_tools)}")
+
+
+def write_spec_variant(tmp_path: Path, name: str, allowed_actions: str) -> Path:
+    text = SPEC_MCRL2.read_text(encoding="utf-8")
+    assert SPEC_ALLOWED_ACTIONS in text
+    path = tmp_path / f"{name}.mcrl2"
+    path.write_text(
+        text.replace(SPEC_ALLOWED_ACTIONS, allowed_actions, 1),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_claim_kind_values_use_curated_prefixes():
+    prefixes = {claim_kind.value.split("::", 1)[0] for claim_kind in ClaimKind}
+    assert prefixes == {"soundness", "flow", "concurrency", "interaction"}
+    assert all(claim_kind.value.count("::") == 1 for claim_kind in ClaimKind)
 
 
 def test_clean_name_matches_third_party_convention():
@@ -124,12 +160,33 @@ def test_extract_claims_and_generate_mcf_formulas():
     generator = MCFGenerator(strategy)
     claims = extract_claims(model)
 
-    assert any(claim.kind.value == "deadlock_freedom" for claim in claims)
-    assert any(claim.kind.value == "action_preservation" for claim in claims)
-    assert any(claim.kind.value == "message_synchronization" for claim in claims)
-    assert any(claim.kind.value == "causality" for claim in claims)
-    assert sum(claim.kind.value == "action_preservation" for claim in claims) == 8
-    assert sum(claim.kind.value == "message_synchronization" for claim in claims) == 3
+    assert any(claim.kind.value == "soundness::deadlock_freedom" for claim in claims)
+    assert any(claim.kind.value == "soundness::action_preservation" for claim in claims)
+    assert any(claim.kind.value == "flow::causality" for claim in claims)
+    assert any(claim.kind.value == "concurrency::no_artificial_ordering" for claim in claims)
+    assert any(claim.kind.value == "concurrency::no_early_join" for claim in claims)
+    assert any(claim.kind.value == "interaction::rendezvous_visibility" for claim in claims)
+    assert sum(claim.kind.value == "soundness::action_preservation" for claim in claims) == 8
+    assert sum(claim.kind.value == "concurrency::no_artificial_ordering" for claim in claims) == 2
+    assert sum(claim.kind.value == "concurrency::branch_co_occurrence" for claim in claims) == 2
+    assert sum(claim.kind.value == "concurrency::no_early_join" for claim in claims) == 2
+    assert sum(claim.kind.value == "concurrency::join_reachable_after_all_branches" for claim in claims) == 2
+    assert (
+        sum(
+            claim.kind.value == "concurrency::exactly_once_branch_completion_before_join"
+            for claim in claims
+        )
+        == 2
+    )
+    assert sum(claim.kind.value == "interaction::rendezvous_visibility" for claim in claims) == 3
+    assert sum(claim.kind.value == "interaction::rendezvous_causality" for claim in claims) == 3
+    assert (
+        sum(
+            claim.kind.value == "interaction::conversation_order_preservation"
+            for claim in claims
+        )
+        == 2
+    )
 
     formulas = [generator.generate(claim, model) for claim in claims]
     assert any("endevent_1" in formula for formula in formulas)
@@ -139,25 +196,103 @@ def test_extract_claims_and_generate_mcf_formulas():
 
 
 def test_mcrl2_toolchain_verifies_sample_claims(tmp_path):
-    required_tools = ("mcrl22lps", "lps2pbes", "pbes2bool")
-    missing_tools = [tool for tool in required_tools if shutil.which(tool) is None]
-    if missing_tools:
-        pytest.skip(f"mCRL2 toolchain not available: {', '.join(missing_tools)}")
+    require_mcrl2_verification_toolchain()
 
     results = VerificationRunner().verify(SPEC_BPMN, SPEC_MCRL2, work_dir=tmp_path)
 
-    assert len(results) == 25
-    assert sum(result.claim.kind.value == "deadlock_freedom" for result in results) == 2
-    assert sum(result.claim.kind.value == "action_preservation" for result in results) == 8
-    assert sum(result.claim.kind.value == "message_synchronization" for result in results) == 3
-    assert sum(result.claim.kind.value == "causality" for result in results) == 6
-    assert sum(result.claim.kind.value == "necessary_response" for result in results) == 6
+    assert len(results) == 40
+    assert sum(result.claim.kind.value == "soundness::deadlock_freedom" for result in results) == 2
+    assert sum(result.claim.kind.value == "soundness::action_preservation" for result in results) == 8
+    assert sum(result.claim.kind.value == "flow::causality" for result in results) == 6
+    assert sum(result.claim.kind.value == "flow::necessary_response" for result in results) == 6
+    assert sum(result.claim.kind.value == "concurrency::no_artificial_ordering" for result in results) == 2
+    assert sum(result.claim.kind.value == "concurrency::branch_co_occurrence" for result in results) == 2
+    assert sum(result.claim.kind.value == "concurrency::no_early_join" for result in results) == 2
+    assert sum(result.claim.kind.value == "concurrency::join_reachable_after_all_branches" for result in results) == 2
+    assert (
+        sum(
+            result.claim.kind.value == "concurrency::exactly_once_branch_completion_before_join"
+            for result in results
+        )
+        == 2
+    )
+    assert sum(result.claim.kind.value == "interaction::rendezvous_visibility" for result in results) == 3
+    assert sum(result.claim.kind.value == "interaction::rendezvous_causality" for result in results) == 3
+    assert (
+        sum(
+            result.claim.kind.value == "interaction::conversation_order_preservation"
+            for result in results
+        )
+        == 2
+    )
     assert all(result.status == "passed" for result in results)
     assert all(result.truth is True for result in results)
     assert (tmp_path / "model.lps").exists()
+    assert all(":" not in result.mcf_path.name for result in results if result.mcf_path)
 
 
-def test_message_flows_extract_synchronization_claims():
+def test_mcrl2_toolchain_reports_failed_when_translated_action_is_blocked(tmp_path):
+    require_mcrl2_verification_toolchain()
+    bad_mcrl2 = write_spec_variant(
+        tmp_path,
+        "missing_eir_communication",
+        (
+            "allow({c_send_manifest, c_send_request, c_start_gw_1, "
+            "c_start_gw_2, c_sync_join_1, c_sync_join_2, endevent_1, endevent_2}"
+        ),
+    )
+
+    results = VerificationRunner().verify(
+        SPEC_BPMN,
+        bad_mcrl2,
+        work_dir=tmp_path / "artifacts",
+    )
+    failed = [result for result in results if result.status == "failed"]
+
+    assert failed
+    assert any(result.truth is False for result in failed)
+    assert any(
+        result.claim.kind == ClaimKind.ACTION_PRESERVATION
+        and result.claim.node_id == "ReceiveTask_2"
+        for result in failed
+    )
+    assert any(
+        result.claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY
+        and result.claim.node_id == "MessageFlow_3"
+        for result in failed
+    )
+
+
+def test_mcrl2_toolchain_reports_failed_when_raw_send_is_exposed(tmp_path):
+    require_mcrl2_verification_toolchain()
+    bad_mcrl2 = write_spec_variant(
+        tmp_path,
+        "raw_request_send_exposed",
+        (
+            "allow({s_send_request, c_send_eir, c_send_manifest, c_send_request, "
+            "c_start_gw_1, c_start_gw_2, c_sync_join_1, c_sync_join_2, "
+            "endevent_1, endevent_2}"
+        ),
+    )
+
+    results = VerificationRunner().verify(
+        SPEC_BPMN,
+        bad_mcrl2,
+        work_dir=tmp_path / "artifacts",
+    )
+    failed = [result for result in results if result.status == "failed"]
+
+    assert len(failed) == 1
+    assert {
+        (result.claim.kind, result.claim.node_id)
+        for result in failed
+    } == {
+        (ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY, "MessageFlow_1"),
+    }
+    assert all(result.truth is False for result in failed)
+
+
+def test_message_flows_extract_rendezvous_visibility_claims():
     model = BPMNParser().parse(SPEC_BPMN)
     strategy = ThirdPartyBpmn2Mcrl2Strategy()
     strategy.prepare(model)
@@ -165,7 +300,7 @@ def test_message_flows_extract_synchronization_claims():
 
     claims = [
         claim for claim in extract_claims(model)
-        if claim.kind == ClaimKind.MESSAGE_SYNCHRONIZATION
+        if claim.kind == ClaimKind.COMMUNICATION_RENDEZVOUS_VISIBILITY
     ]
 
     assert len(claims) == 3
@@ -183,6 +318,132 @@ def test_message_flows_extract_synchronization_claims():
     assert "c_send_request" in formula
     assert "s_send_request" in formula
     assert "r_send_request" in formula
+
+
+def test_parallel_branch_order_preservation_claims():
+    model = parse_inline_bpmn(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:parallelGateway id="Split" />
+    <bpmn:task id="A" name="A" />
+    <bpmn:task id="B" name="B" />
+    <bpmn:task id="C" name="C" />
+    <bpmn:parallelGateway id="Join" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Split" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Split" targetRef="A" />
+    <bpmn:sequenceFlow id="F3" sourceRef="A" targetRef="B" />
+    <bpmn:sequenceFlow id="F4" sourceRef="B" targetRef="Join" />
+    <bpmn:sequenceFlow id="F5" sourceRef="Split" targetRef="C" />
+    <bpmn:sequenceFlow id="F6" sourceRef="C" targetRef="Join" />
+    <bpmn:sequenceFlow id="F7" sourceRef="Join" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""",
+    )
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+    claims = extract_claims(model)
+
+    order_claim = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.INTERLEAVING_BRANCH_ORDER_PRESERVATION
+        and claim.source_node_id == "A"
+        and claim.target_node_id == "B"
+    )
+    formula = generator.generate(order_claim, model)
+
+    assert "a(oid)" in formula
+    assert "b(oid)" in formula
+    assert "Branch-internal order" in formula
+    assert any(
+        claim.kind == ClaimKind.INTERLEAVING_NO_ARTIFICIAL_ORDERING
+        and claim.branch_node_ids == ("A", "C")
+        for claim in claims
+    )
+
+
+def test_exclusive_branch_mutex_namespaced_claims():
+    model = parse_inline_bpmn(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="P" isExecutable="true">
+    <bpmn:startEvent id="Start" />
+    <bpmn:exclusiveGateway id="Split" />
+    <bpmn:task id="A" name="A" />
+    <bpmn:task id="B" name="B" />
+    <bpmn:endEvent id="End" />
+    <bpmn:sequenceFlow id="F1" sourceRef="Start" targetRef="Split" />
+    <bpmn:sequenceFlow id="F2" sourceRef="Split" targetRef="A" />
+    <bpmn:sequenceFlow id="F3" sourceRef="Split" targetRef="B" />
+    <bpmn:sequenceFlow id="F4" sourceRef="A" targetRef="End" />
+    <bpmn:sequenceFlow id="F5" sourceRef="B" targetRef="End" />
+  </bpmn:process>
+</bpmn:definitions>
+""",
+    )
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+    claims = [
+        claim for claim in extract_claims(model)
+        if claim.kind == ClaimKind.CHOICE_EXCLUSIVE_BRANCH_MUTEX
+    ]
+
+    assert len(claims) == 1
+    assert claims[0].branch_node_ids == ("A", "B")
+    formula = generator.generate(claims[0], model)
+    assert "a(oid)" in formula
+    assert "b(oid)" in formula
+
+
+def test_event_based_loop_claims_cover_race_escape_and_chatter():
+    model = BPMNParser().parse(THIRD_PARTY_PIZZA_BPMN)
+    strategy = ThirdPartyBpmn2Mcrl2Strategy()
+    strategy.prepare(model)
+    generator = MCFGenerator(strategy)
+    claims = extract_claims(model)
+
+    first_wins = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.CHOICE_EVENT_BASED_FIRST_WINS
+    )
+    no_chatter = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.COMMUNICATION_NO_POST_RESOLUTION_CHATTER
+    )
+    bounded_loop = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.LOOP_BOUNDED_UNFOLDING_SOUNDNESS
+    )
+    escape = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.LOOP_ESCAPE_POSSIBILITY
+    )
+    starvation = next(
+        claim for claim in claims
+        if claim.kind == ClaimKind.LOOP_NO_FORCED_STARVATION
+    )
+
+    first_wins_formula = generator.generate(first_wins, model)
+    no_chatter_formula = generator.generate(no_chatter, model)
+    bounded_formula = generator.generate(bounded_loop, model)
+    escape_formula = generator.generate(escape, model)
+    starvation_formula = generator.generate(starvation, model)
+
+    assert "gateway_eventbased" in first_wins_formula
+    assert "c_pizza" in first_wins_formula
+    assert "event_60_minutes" in first_wins_formula
+    assert "c_pizza" in no_chatter_formula
+    assert "c_1" in no_chatter_formula
+    assert "c_2" in no_chatter_formula
+    assert bounded_loop.metadata["loop_bound"] == 2
+    assert bounded_formula.count("event_60_minutes") >= 2
+    assert "c_pizza" in escape_formula
+    assert "gateway_eventbased" in starvation_formula
 
 
 def test_interrupting_boundary_event_extracts_absolute_mutex():
@@ -577,6 +838,60 @@ def test_trace_main_standalone_equivalence_check():
     comp = extractor.compare_traces(bpmn_traces, mcrl2_traces)
 
     assert comp.is_equivalent
+
+
+def test_trace_verifier_reports_not_equivalent_for_missing_interleaving(tmp_path, monkeypatch):
+    aut_path = tmp_path / "missing_interleaving.aut"
+    aut_path.write_text(
+        "\n".join(
+            [
+                "des (0, 5, 6)",
+                '(0, "c_send_request", 1)',
+                '(1, "c_send_manifest", 2)',
+                '(2, "c_send_eir", 3)',
+                '(3, "endevent_1", 4)',
+                '(4, "endevent_2", 5)',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_generate(self, mcrl2_path, *, work_dir=None):
+        return LTSGenerationResult(
+            status="success",
+            lts_path=aut_path,
+            lps_path=tmp_path / "model.lps",
+        )
+
+    monkeypatch.setattr(
+        trace_verifier_module.LTSGenerator,
+        "generate",
+        fake_generate,
+    )
+
+    result = TraceVerificationRunner().verify(
+        SPEC_BPMN,
+        SPEC_MCRL2,
+        work_dir=tmp_path,
+    )
+
+    assert result.status == "not_equivalent"
+    ffw = result.per_process["Process_FFW"]
+    sag = result.per_process["Process_SAG"]
+    assert (
+        "c_send_request",
+        "c_send_eir",
+        "c_send_manifest",
+        "endevent_1",
+    ) in ffw.bpmn_only
+    assert (
+        "c_send_request",
+        "c_send_eir",
+        "c_send_manifest",
+        "endevent_2",
+    ) in sag.bpmn_only
+    assert not ffw.mcrl2_only
+    assert not sag.mcrl2_only
 
 
 def test_interleave_multi_truncation_preserves_all_branches():

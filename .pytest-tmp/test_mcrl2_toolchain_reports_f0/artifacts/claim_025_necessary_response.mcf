@@ -1,0 +1,5 @@
+% EndEvent_2 must eventually occur after Task_SAG_Send2.
+% Once the source occurs, translator-internal steps may delay the response,
+% but every reachable pre-response state must keep the target reachable.
+[true* . (exists oid: OrderId. c_send_eir(oid))]
+nu X. (<true* . (exists oid: OrderId. endevent_2(oid))>true && [!(exists oid: OrderId. endevent_2(oid))]X)

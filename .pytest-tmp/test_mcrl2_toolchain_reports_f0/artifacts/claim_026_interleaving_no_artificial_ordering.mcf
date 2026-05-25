@@ -1,0 +1,4 @@
+% Parallel branches ReceiveTask_1 and ReceiveTask_2 under ParallelGateway_1 should be reachable in both observable orders.
+% Both observable branch orders should be reachable.
+<true* . (exists oid: OrderId. c_send_manifest(oid)) . true* . (exists oid: OrderId. c_send_eir(oid))>true &&
+<true* . (exists oid: OrderId. c_send_eir(oid)) . true* . (exists oid: OrderId. c_send_manifest(oid))>true

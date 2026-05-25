@@ -63,6 +63,9 @@ class ThirdPartyBpmn2Mcrl2Strategy(TranslatorNamingStrategy):
         if node.type == "startEvent":
             return self._event_action(node, "start") if node.event_definitions else None
 
+        if node.type == "eventBasedGateway":
+            return clean_name(node.name or node.id)
+
         if node.is_task:
             return clean_name(node.name or node.id)
 

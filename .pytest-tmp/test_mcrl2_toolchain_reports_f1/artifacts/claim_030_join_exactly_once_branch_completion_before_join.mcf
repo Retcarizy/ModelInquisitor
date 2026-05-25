@@ -1,0 +1,6 @@
+% Each non-looping parallel branch completion should occur exactly once before EndEvent_1.
+% Every branch completion must occur at least once and at most once before the join continuation.
+[(!(exists oid: OrderId. c_send_manifest(oid)))* . (exists oid: OrderId. endevent_1(oid))]false &&
+[(!(exists oid: OrderId. endevent_1(oid)))* . (exists oid: OrderId. c_send_manifest(oid)) . (!(exists oid: OrderId. endevent_1(oid)))* . (exists oid: OrderId. c_send_manifest(oid)) . (!(exists oid: OrderId. endevent_1(oid)))* . (exists oid: OrderId. endevent_1(oid))]false &&
+[(!(exists oid: OrderId. c_send_eir(oid)))* . (exists oid: OrderId. endevent_1(oid))]false &&
+[(!(exists oid: OrderId. endevent_1(oid)))* . (exists oid: OrderId. c_send_eir(oid)) . (!(exists oid: OrderId. endevent_1(oid)))* . (exists oid: OrderId. c_send_eir(oid)) . (!(exists oid: OrderId. endevent_1(oid)))* . (exists oid: OrderId. endevent_1(oid))]false

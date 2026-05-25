@@ -1,0 +1,3 @@
+% ReceiveTask_3 must occur before EndEvent_2.
+% Target must not occur before source.
+[(!(exists oid: OrderId. c_send_request(oid)))* . (exists oid: OrderId. endevent_2(oid))]false

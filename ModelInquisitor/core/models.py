@@ -6,12 +6,35 @@ from typing import Any
 
 
 class ClaimKind(str, Enum):
-    DEADLOCK_FREEDOM = "deadlock_freedom"
-    ACTION_PRESERVATION = "action_preservation"
-    MESSAGE_SYNCHRONIZATION = "message_synchronization"
-    CAUSALITY = "causality"
-    MUTEX = "mutex"
-    NECESSARY_RESPONSE = "necessary_response"
+    DEADLOCK_FREEDOM = "soundness::deadlock_freedom"
+    ACTION_PRESERVATION = "soundness::action_preservation"
+    CAUSALITY = "flow::causality"
+    MUTEX = "flow::mutex"
+    NECESSARY_RESPONSE = "flow::necessary_response"
+    INTERLEAVING_NO_ARTIFICIAL_ORDERING = "concurrency::no_artificial_ordering"
+    INTERLEAVING_BRANCH_ORDER_PRESERVATION = "concurrency::branch_order_preservation"
+    INTERLEAVING_BRANCH_CO_OCCURRENCE = "concurrency::branch_co_occurrence"
+    JOIN_NO_EARLY_JOIN = "concurrency::no_early_join"
+    JOIN_REACHABLE_AFTER_ALL_BRANCHES = "concurrency::join_reachable_after_all_branches"
+    JOIN_EXACTLY_ONCE_BRANCH_COMPLETION_BEFORE_JOIN = (
+        "concurrency::exactly_once_branch_completion_before_join"
+    )
+    COMMUNICATION_RENDEZVOUS_VISIBILITY = "interaction::rendezvous_visibility"
+    COMMUNICATION_RENDEZVOUS_CAUSALITY = "interaction::rendezvous_causality"
+    COMMUNICATION_CONVERSATION_ORDER_PRESERVATION = (
+        "interaction::conversation_order_preservation"
+    )
+    COMMUNICATION_NO_POST_RESOLUTION_CHATTER = (
+        "interaction::no_post_resolution_chatter"
+    )
+    CHOICE_EXCLUSIVE_BRANCH_MUTEX = "flow::exclusive_branch_mutex"
+    CHOICE_EVENT_BASED_FIRST_WINS = "flow::event_based_first_wins"
+    CHOICE_EVENT_BASED_BRANCH_REACHABILITY = (
+        "flow::event_based_branch_reachability"
+    )
+    LOOP_BOUNDED_UNFOLDING_SOUNDNESS = "soundness::bounded_unfolding_soundness"
+    LOOP_ESCAPE_POSSIBILITY = "flow::escape_possibility"
+    LOOP_NO_FORCED_STARVATION = "flow::no_forced_starvation"
 
 
 @dataclass(frozen=True)

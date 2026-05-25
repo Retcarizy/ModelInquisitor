@@ -1,0 +1,3 @@
+% Process Process_SAG should be able to reach an end event.
+% Reachability-style deadlock freedom approximation.
+<true*>(<exists oid: OrderId. endevent_2(oid)>true)

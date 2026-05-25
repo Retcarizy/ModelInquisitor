@@ -1,0 +1,3 @@
+% Communication MessageFlow_1 should occur only after both participants reach their communication context.
+% The communication should not be globally observable before participant-side prerequisites.
+<true* . (exists oid: OrderId. c_send_request(oid))>true

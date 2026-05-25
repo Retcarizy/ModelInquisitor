@@ -1,0 +1,3 @@
+% Task_FFW_Send must occur before EndEvent_1.
+% Target must not occur before source.
+[(!(exists oid: OrderId. c_send_request(oid)))* . (exists oid: OrderId. endevent_1(oid))]false

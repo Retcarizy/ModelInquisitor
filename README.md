@@ -18,12 +18,12 @@ ModelInquisitor/
 
 ## Claims
 
-- **Deadlock freedom**: each process should still be able to reach an end event.
-- **Causality**: a source node should be a necessary predecessor of a target node.
-- **Message synchronization**: cross-process message sends and receives should be forced to synchronize.
-- **Mutex**: branches under an exclusive gateway should not both occur in one execution trace.
-- **Interrupting boundary mutex**: an interrupting boundary event's exceptional branch should be mutually exclusive with the normal continuation of the attached task.
-- **Necessary response**: if a response node post-dominates a source node, then every continuation after the source should eventually reach the response.
+All claim kinds use `prefix::claim_name`, with prefixes limited to `soundness`, `flow`, `concurrency`, and `interaction`.
+
+- **Soundness claims**: `soundness::deadlock_freedom`, `soundness::action_preservation`, and `soundness::bounded_unfolding_soundness` check termination reachability, observable action preservation, and bounded loop unfolding.
+- **Flow claims**: `flow::causality`, `flow::mutex`, `flow::necessary_response`, `flow::exclusive_branch_mutex`, `flow::event_based_first_wins`, `flow::event_based_branch_reachability`, `flow::escape_possibility`, and `flow::no_forced_starvation` check control-flow ordering, exclusivity, reachability, response, and loop escape properties.
+- **Concurrency claims**: `concurrency::no_artificial_ordering`, `concurrency::branch_order_preservation`, `concurrency::branch_co_occurrence`, `concurrency::no_early_join`, `concurrency::join_reachable_after_all_branches`, and `concurrency::exactly_once_branch_completion_before_join` check parallel interleavings and join behavior.
+- **Interaction claims**: `interaction::rendezvous_visibility`, `interaction::rendezvous_causality`, `interaction::conversation_order_preservation`, and `interaction::no_post_resolution_chatter` check message-flow synchronization, participant-side causality, conversation order, and post-resolution chatter.
 
 Claim formulas mention only actions that represent BPMN-visible semantics. Translator-internal helper actions such as raw `s_*`/`r_*` message endpoints and gateway synchronization actions are treated as implementation detail rather than semantic claim targets. For a BPMN message flow, the communicated `c_*` action is the semantic representative of the message exchange.
 
